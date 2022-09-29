@@ -9,6 +9,7 @@ import mimetypes
 import diskcache
 from flask import render_template
 import requests
+import zstd
 
 from . import config
 from .logger import logger
@@ -58,15 +59,15 @@ class GitHub:
                     if path == "" or (p.exists() and p.is_dir()):
                         content = self._generate_dir_listing(p, path).encode()
                         mime = "text/html"
-                        self._cache.add(key, (content, mime))
+                        self._cache.add(key, (zstd.compress(content), mime))
                         return io.BytesIO(content), mime
                     with z.open(path, "r") as zfh:
                         mime, _ = mimetypes.guess_type(path)
-                        self._cache.add(key, (zfh.read(), mime))
+                        self._cache.add(key, (zstd.compress(zfh.read()), mime))
         else:
             logger.info("Cache hit on key %s", key)
         content, mime = self._cache.get(key)
-        return io.BytesIO(content), mime
+        return io.BytesIO(zstd.decompress(content)), mime
 
     def _generate_dir_listing(self, d: zipfile.Path, url_path: str) -> str:
         pd = PurePath(str(d))

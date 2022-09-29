@@ -5,7 +5,7 @@ import logging
 import mimetypes
 
 
-from . import github
+from . import github, config
 from .logger import logger
 
 
@@ -30,6 +30,21 @@ def create_app() -> Flask:
     @app.route("/view/<owner>/<repo>/<int:artifact_id>/")
     @app.route("/view/<owner>/<repo>/<int:artifact_id>/<path:file>")
     def view(owner: str, repo: str, artifact_id: int, file: str = ""):
+
+        if config.REPO_ALLOWLIST is not None:
+            if f"{owner}/{repo}" not in config.REPO_ALLOWLIST:
+                logger.debug(
+                    "Requested artifact is not on repo that is on allowlist: %s/%s",
+                    owner,
+                    repo,
+                )
+                abort(403)
+
+        logger.debug(
+            "Requested artifact is on repo that is on allowlist: %s/%s",
+            owner,
+            repo,
+        )
 
         if etag := request.headers.get("If-None-Match"):
             if etag == f"etag_{owner}/{repo}_{artifact_id}_{file}":

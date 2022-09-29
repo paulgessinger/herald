@@ -7,7 +7,7 @@
 	{% if url_path != "" %}
 	<a href="../">..</a></br>
 	{% endif %}
-	{% for item, url in items %}
+	{% for item, url in items -%}
 	<a href="{{ url }}">{{ item }}</a></br>
 	{% endfor %}
 
