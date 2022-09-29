@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<head>
+	<title>{{ url_path if url_path != "" else "/" }}</title>
+</head>
+<body>
+
+	{% if url_path != "" %}
+	<a href="../">..</a></br>
+	{% endif %}
+	{% for item, url in items %}
+	<a href="{{ url }}">{{ item }}</a></br>
+	{% endfor %}
+
+</body>
+</html>

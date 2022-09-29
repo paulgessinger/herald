@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "herald"
+version = "0.1.0"
+description = ""
+authors = ["Paul Gessinger <hello@paulgessinger.com>"]
+license = "MPLv2"
+packages = [
+    { include = "herald", from = "src" },
+]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+diskcache = "^5.4.0"
+Flask = "^2.2.2"
+Flask-Limiter = "^2.6.3"
+python-dotenv = "^0.21.0"
+requests = "^2.28.1"
+
+[tool.poetry.dev-dependencies]
+black = "^22.8.0"
+types-Flask = "^1.1.6"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
