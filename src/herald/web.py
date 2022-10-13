@@ -1,4 +1,4 @@
-from flask import Flask, abort, make_response, request
+from flask import Flask, abort, make_response, redirect, request
 import zipfile
 import functools
 import logging
@@ -45,6 +45,9 @@ def create_app() -> Flask:
             owner,
             repo,
         )
+
+        if file == "" and not request.path.endswith("/"):
+            return redirect(request.path + "/")
 
         if etag := request.headers.get("If-None-Match"):
             if etag == f"etag_{owner}/{repo}_{artifact_id}_{file}":
