@@ -24,7 +24,7 @@ def create_app() -> Flask:
 
     @app.route("/")
     def index():
-        return "hi"
+        return "herald"
 
     @app.route("/view/<owner>/<repo>/<int:artifact_id>")
     @app.route("/view/<owner>/<repo>/<int:artifact_id>/")
