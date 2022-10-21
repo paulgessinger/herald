@@ -39,3 +39,5 @@ REPO_ALLOWLIST: List[str] | None = (
 )
 
 FILE_CACHE: bool = get("FILE_CACHE", "True") != "False"
+
+PNG_DPI: int = int(get("PNG_DPI", 300))

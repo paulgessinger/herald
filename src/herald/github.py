@@ -100,7 +100,7 @@ class GitHub:
                                     single_file=True,
                                     output_folder=str(png_file.parent),
                                     output_file=png_file.stem,
-                                    dpi=300,
+                                    dpi=config.PNG_DPI,
                                 )
 
                                 self._cache.add(
