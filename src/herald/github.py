@@ -1,15 +1,18 @@
 import contextlib
 from collections.abc import Generator
-from pathlib import PurePath
+from pathlib import PurePath, Path
 from typing import IO, Tuple
 import zipfile
 import io
 import mimetypes
+import tempfile
+import os
 
 import diskcache
 from flask import render_template
 import requests
 import zstd
+import pdf2image
 
 from . import config
 from .logger import logger
@@ -46,8 +49,14 @@ class GitHub:
 
         yield self._cache.read(key)
 
-    def get_file(self, repo: str, artifact_id: int, path: str) -> Tuple[IO[bytes], str]:
+    def get_file(
+        self, repo: str, artifact_id: int, path: str, to_png: bool
+    ) -> Tuple[IO[bytes], str]:
         key = f"file_{repo}_{artifact_id}_{path}"
+
+        if to_png:
+            key += "_png"
+
         if not config.FILE_CACHE or key not in self._cache:
             if config.FILE_CACHE:
                 logger.info("Cache miss on key %s", key)
@@ -63,10 +72,47 @@ class GitHub:
                         return io.BytesIO(content), mime
                     with z.open(path, "r") as zfh:
                         mime, _ = mimetypes.guess_type(path)
-                        self._cache.add(key, (zstd.compress(zfh.read()), mime))
+                        if to_png:
+                            if mime != "application/pdf":
+                                raise ValueError(
+                                    "Conversion to png only supported from pdf"
+                                )
+
+                            with (
+                                tempfile.NamedTemporaryFile("wb") as tfh,
+                                tempfile.TemporaryDirectory() as tmpd,
+                            ):
+                                tfh.write(zfh.read())
+                                tfh.flush()
+
+                                info = pdf2image.pdfinfo_from_path(tfh.name)
+                                if info["Pages"] != 1:
+                                    raise ValueError(
+                                        "Unable to convert pdf with >1 pages"
+                                    )
+
+                                png_file = Path(tmpd) / "tmp.png"
+                                #  png_file = Path.cwd() / "tmp.png"
+
+                                pdf2image.convert_from_path(
+                                    tfh.name,
+                                    fmt="png",
+                                    single_file=True,
+                                    output_folder=str(png_file.parent),
+                                    output_file=png_file.stem,
+                                    dpi=300,
+                                )
+
+                                self._cache.add(
+                                    key,
+                                    (zstd.compress(png_file.read_bytes()), "image/png"),
+                                )
+                        else:
+                            self._cache.add(key, (zstd.compress(zfh.read()), mime))
         else:
             logger.info("Cache hit on key %s", key)
         content, mime = self._cache.get(key)
+
         return io.BytesIO(zstd.decompress(content)), mime
 
     def _generate_dir_listing(self, d: zipfile.Path, url_path: str) -> str:

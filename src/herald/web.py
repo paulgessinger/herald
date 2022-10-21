@@ -49,17 +49,31 @@ def create_app() -> Flask:
         if file == "" and not request.path.endswith("/"):
             return redirect(request.path + "/")
 
+        exp_etag = f"etag_{owner}/{repo}_{artifact_id}_{file}"
+
+        to_png = request.args.get("to_png", type=bool, default=False)
+
+        if to_png:
+            exp_etag += "_png"
+
         if etag := request.headers.get("If-None-Match"):
-            if etag == f"etag_{owner}/{repo}_{artifact_id}_{file}":
+            if etag == exp_etag:
                 return "", 304
 
         try:
-            logger.debug("Getting file %s/%s #%d %s", owner, repo, artifact_id, file)
-            buf, mime = gh.get_file(f"{owner}/{repo}", artifact_id, file)
+            logger.debug(
+                "Getting file %s/%s #%d %s, to image: %s",
+                owner,
+                repo,
+                artifact_id,
+                file,
+                to_png,
+            )
+            buf, mime = gh.get_file(f"{owner}/{repo}", artifact_id, file, to_png=to_png)
             response = make_response(buf.read())
             response.headers["Content-Type"] = mime
             response.headers["Cache-Control"] = "max-age=31536000"
-            response.headers["Etag"] = f"etag_{owner}/{repo}_{artifact_id}_{file}"
+            response.headers["Etag"] = exp_etag
             return response
             #  return (
             #  buf.read(),
