@@ -1,8 +1,11 @@
-from flask import Flask, abort, make_response, redirect, request
 import logging
+
+from flask import Flask, abort, make_response, redirect, request
 import requests
+from prometheus_client import core
+from prometheus_client.exposition import generate_latest
 
-
+from .metric import request_counter, cache_size, cache_etag_hits
 from . import github, config
 from .logger import logger
 
@@ -19,6 +22,12 @@ def create_app() -> Flask:
 
     if app.debug:
         logger.setLevel(logging.DEBUG)
+
+    @app.before_request
+    def on_request():
+        if request.path == "/metrics":
+            return
+        request_counter.inc()
 
     @app.route("/")
     def index():
@@ -56,6 +65,7 @@ def create_app() -> Flask:
 
         if etag := request.headers.get("If-None-Match"):
             if etag == exp_etag:
+                cache_etag_hits.inc()
                 return "", 304
 
         try:
@@ -80,5 +90,13 @@ def create_app() -> Flask:
         except KeyError:
             abort(404)
 
-    #  https://github.com/acts-project/acts/suites/8446187715/artifacts/374478672
+    @app.get("/metrics")
+    def metrics():
+
+        cache_size.set(gh._cache.volume())
+
+        registry = core.REGISTRY
+        data = generate_latest(registry)
+        return data.decode("utf-8")
+
     return app

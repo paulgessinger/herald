@@ -16,6 +16,7 @@ import pdf2image
 
 from . import config
 from .logger import logger
+from .metric import cache_hits, cache_misses
 
 
 class GitHub:
@@ -43,9 +44,11 @@ class GitHub:
 
         if key not in self._cache:
             logger.info("Cache miss on key %s", key)
+            cache_misses.labels(type="artifact").inc()
             self._cache.add(key, self._download_artifact(repo, artifact_id))
         else:
             logger.info("Cache hit on key %s", key)
+            cache_hits.labels(type="artifact").inc()
 
         yield self._cache.read(key)
 
@@ -54,12 +57,15 @@ class GitHub:
     ) -> Tuple[IO[bytes], str]:
         key = f"file_{repo}_{artifact_id}_{path}"
 
+        print(self._cache.volume())
+
         if to_png:
             key += "_png"
 
         if not config.FILE_CACHE or key not in self._cache:
             if config.FILE_CACHE:
                 logger.info("Cache miss on key %s", key)
+                cache_misses.labels(type="file").inc()
             with self.get_artifact(repo, artifact_id) as fh:
                 with zipfile.ZipFile(fh) as z:
                     p = zipfile.Path(
@@ -110,6 +116,7 @@ class GitHub:
                         else:
                             self._cache.add(key, (zstd.compress(zfh.read()), mime))
         else:
+            cache_hits.labels(type="file").inc()
             logger.info("Cache hit on key %s", key)
         content, mime = self._cache.get(key)
 
