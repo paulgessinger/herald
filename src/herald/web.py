@@ -1,8 +1,6 @@
 from flask import Flask, abort, make_response, redirect, request
-import zipfile
-import functools
 import logging
-import mimetypes
+import requests
 
 
 from . import github, config
@@ -75,21 +73,10 @@ def create_app() -> Flask:
             response.headers["Cache-Control"] = "max-age=31536000"
             response.headers["Etag"] = exp_etag
             return response
-            #  return (
-            #  buf.read(),
-            #  200,
-            #  {"Content-Type": mime, "Cache-Control": "max-age=31536000"},
-            #  )
-
-            #  for chunk in iter(functools.partial(fh.read, 1024), b""):
-            #  yield chunk
-
-            #  def generate():
-            #  with gh.get_file(f"{owner}/{repo}", artifact_id, file) as fh:
-            #  for chunk in iter(functools.partial(fh.read, 1024), b""):
-            #  yield chunk
-
-            #  return generate(), {"Content-Type": "text/html"}
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                abort(404)
+            raise
         except KeyError:
             abort(404)
 
