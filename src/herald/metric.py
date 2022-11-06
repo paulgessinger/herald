@@ -1,5 +1,7 @@
 from cProfile import label
-from prometheus_client import core, Counter, Gauge, CollectorRegistry
+from prometheus_client import core, Counter, Gauge, CollectorRegistry, Info
+
+from . import config
 
 request_counter = Counter("herald_num_req", "Total number of requests")
 
@@ -12,3 +14,8 @@ cache_misses = Counter(
 )
 
 cache_etag_hits = Counter("herald_etag_hits", "Total number of etag hits")
+
+cache_size_config = Info(
+    "herald_cache_size_config_bytes", "Configured maximum size of the cache"
+)
+cache_size_config.info({"cache_size": config.CACHE_SIZE})
