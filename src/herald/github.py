@@ -28,6 +28,7 @@ class GitHub:
         )
 
     def _download_artifact(self, repo: str, artifact_id: int) -> bytes:
+        logger.info("Downloading artifact from GitHub")
         r = requests.get(
             f"https://api.github.com/repos/{repo}/actions/artifacts/{artifact_id}/zip",
             headers={"Authorization": f"Bearer {config.GH_TOKEN}"},
