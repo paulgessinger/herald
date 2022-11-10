@@ -26,9 +26,10 @@ class GitHub:
             cache_size=config.CACHE_SIZE,
             eviction_policy="least-frequently-used",
         )
+        self._artifact_lock = diskcache.Lock(self._cache, "artifacts")
 
     def _download_artifact(self, repo: str, artifact_id: int) -> bytes:
-        logger.info("Downloading artifact from GitHub")
+        logger.info("Downloading artifact %d from GitHub", artifact_id)
         r = requests.get(
             f"https://api.github.com/repos/{repo}/actions/artifacts/{artifact_id}/zip",
             headers={"Authorization": f"Bearer {config.GH_TOKEN}"},
@@ -43,15 +44,22 @@ class GitHub:
     ) -> Generator[IO[bytes], None, None]:
         key = f"artifact_{repo}_{artifact_id}"
 
-        if key not in self._cache:
-            logger.info("Cache miss on key %s", key)
-            cache_misses.labels(type="artifact").inc()
-            self._cache.add(key, self._download_artifact(repo, artifact_id))
-        else:
+        if key in self._cache:
             logger.info("Cache hit on key %s", key)
             cache_hits.labels(type="artifact").inc()
+            yield self._cache.read(key)
 
-        yield self._cache.read(key)
+        else:
+
+            logger.info("Cache miss on key %s", key)
+            cache_misses.labels(type="artifact").inc()
+
+            with self._artifact_lock:
+                # only first thread downloads the artifact
+                if key not in self._cache:
+                    self._cache.add(key, self._download_artifact(repo, artifact_id))
+
+            yield self._cache.read(key)
 
     def get_file(
         self, repo: str, artifact_id: int, path: str, to_png: bool
