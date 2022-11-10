@@ -5,7 +5,11 @@ import requests
 from prometheus_client import core
 from prometheus_client.exposition import generate_latest
 
-from .metric import request_counter, cache_size, cache_etag_hits
+from .metric import (
+    request_counter,
+    cache_size,
+    cache_etag_hits,
+)
 from . import github, config
 from .logger import logger
 
@@ -92,9 +96,6 @@ def create_app() -> Flask:
 
     @app.get("/metrics")
     def metrics():
-
-        cache_size.set(gh._cache.volume())
-
         registry = core.REGISTRY
         data = generate_latest(registry)
         return data.decode("utf-8")
