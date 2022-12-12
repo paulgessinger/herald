@@ -33,8 +33,15 @@ class GitHub:
             f"https://api.github.com/repos/{repo}/actions/artifacts/{artifact_id}/zip",
             headers={"Authorization": f"Bearer {config.GH_TOKEN}"},
         )
-        r.raise_for_status()
+        try:
+            r.raise_for_status()
+        except e:
+            logger.info(
+                "Got HTTP error for downloading artifact %d", artifact_id, exc_info=True
+            )
+            raise e
         #  print(r.content)
+        logger.info("Download of artifact %d complete", artifact_id)
         return r.content
 
     @contextlib.contextmanager
@@ -53,7 +60,9 @@ class GitHub:
             logger.info("Cache miss on key %s", key)
             cache_misses.labels(type="artifact").inc()
 
-            _artifact_lock = diskcache.Lock(self._cache, f"artifact_lock_{key}", expire=30)
+            _artifact_lock = diskcache.Lock(
+                self._cache, f"artifact_lock_{key}", expire=30
+            )
 
             with _artifact_lock:
                 # only first thread downloads the artifact
@@ -63,7 +72,7 @@ class GitHub:
             yield self._cache.read(key)
 
     def get_file(
-        self, repo: str, artifact_id: int, path: str, to_png: bool
+        self, repo: str, artifact_id: int, path: str, to_png: bool, retry: bool = True
     ) -> Tuple[IO[bytes], str]:
         key = f"file_{repo}_{artifact_id}_{path}"
 
@@ -128,7 +137,20 @@ class GitHub:
         else:
             cache_hits.labels(type="file").inc()
             logger.info("Cache hit on key %s", key)
-        content, mime = self._cache.get(key)
+
+        try:
+            content, mime = self._cache.get(key)
+        except TypeError as e:
+            if retry:
+                logger.error(
+                    "Type error when unpacking cache, retry once with deleted cache!",
+                    exc_info=True,
+                )
+                self._cache.delete(key)
+                return self.get_file(repo, artifact_id, path, to_png, retry=False)
+            else:
+                logger.error("Type error when unpacking cache, no retry", exc_info=True)
+                raise e
 
         return io.BytesIO(zstd.decompress(content)), mime
 
