@@ -40,7 +40,6 @@ class GitHub:
                 "Got HTTP error for downloading artifact %d", artifact_id, exc_info=True
             )
             raise e
-        #  print(r.content)
         logger.info("Download of artifact %d complete", artifact_id)
         return r.content
 
@@ -61,7 +60,7 @@ class GitHub:
             cache_misses.labels(type="artifact").inc()
 
             _artifact_lock = diskcache.Lock(
-                self._cache, f"artifact_lock_{key}", expire=30
+                self._cache, f"artifact_lock_{key}", expire=2*60
             )
 
             with _artifact_lock:
@@ -75,8 +74,6 @@ class GitHub:
         self, repo: str, artifact_id: int, path: str, to_png: bool, retry: bool = True
     ) -> Tuple[IO[bytes], str]:
         key = f"file_{repo}_{artifact_id}_{path}"
-
-        print(self._cache.volume())
 
         if to_png:
             key += "_png"
@@ -145,13 +142,13 @@ class GitHub:
         except Exception as e:
             if retry:
                 logger.error(
-                    "Error when unpacking cache, retry once with deleted cache!",
-                    exc_info=True,
+                    "Error when unpacking cache item $s, retry once with deleted cache!",
+                    key, exc_info=True,
                 )
                 self._cache.delete(key)
                 return self.get_file(repo, artifact_id, path, to_png, retry=False)
             else:
-                logger.error("Type error when unpacking cache, no retry", exc_info=True)
+                logger.error("Type error when unpacking cache for %s, no retry", key, exc_info=True)
                 raise e
 
     def _generate_dir_listing(self, d: zipfile.Path, url_path: str) -> str:
