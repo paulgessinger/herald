@@ -140,10 +140,12 @@ class GitHub:
 
         try:
             content, mime = self._cache.get(key)
-        except TypeError as e:
+            return io.BytesIO(zstd.decompress(content)), mime
+
+        except Exception as e:
             if retry:
                 logger.error(
-                    "Type error when unpacking cache, retry once with deleted cache!",
+                    "Error when unpacking cache, retry once with deleted cache!",
                     exc_info=True,
                 )
                 self._cache.delete(key)
@@ -151,8 +153,6 @@ class GitHub:
             else:
                 logger.error("Type error when unpacking cache, no retry", exc_info=True)
                 raise e
-
-        return io.BytesIO(zstd.decompress(content)), mime
 
     def _generate_dir_listing(self, d: zipfile.Path, url_path: str) -> str:
         pd = PurePath(str(d))
