@@ -26,7 +26,7 @@ class GitHub:
             cache_size=config.CACHE_SIZE,
             eviction_policy="least-frequently-used",
         )
-        self._artifact_lock = diskcache.Lock(self._cache, "artifacts")
+        self._artifact_lock = diskcache.Lock(self._cache, "artifacts", expire=15)
 
     def _download_artifact(self, repo: str, artifact_id: int) -> bytes:
         logger.info("Downloading artifact %d from GitHub", artifact_id)
