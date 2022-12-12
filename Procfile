@@ -1,1 +1,1 @@
-web: gunicorn --threads 4 -b :$PORT wsgi
+web: gunicorn --threads 8 -b :$PORT wsgi
