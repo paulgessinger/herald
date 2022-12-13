@@ -65,6 +65,7 @@ class GitHub:
             with _artifact_lock:
                 # only first thread downloads the artifact
                 logger.info("Lock acquired for artifact %d, does cache exist now? %s", artifact_id, key in self._cache)
+                self._cache.cull()
                 if key not in self._cache:
                     buffer = self._download_artifact(repo, artifact_id)
                     logger.info("Have buffer for artifact %d, writing to key %s", artifact_id, key)
