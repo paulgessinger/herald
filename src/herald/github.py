@@ -51,7 +51,7 @@ class GitHub:
         if key in self._cache:
             logger.info("Cache hit on key %s", key)
             cache_hits.labels(type="artifact").inc()
-            return self._cache.get(key)
+            return self._cache[key]
 
         else:
 
@@ -66,9 +66,14 @@ class GitHub:
                 # only first thread downloads the artifact
                 logger.info("Lock acquired for artifact %d, does cache exist now? %s", artifact_id, key in self._cache)
                 if key not in self._cache:
-                    self._cache.set(key, self._download_artifact(repo, artifact_id), retry=True)
+                    buffer = self._download_artifact(repo, artifact_id)
+                    logger.info("Have buffer for artifact %d, writing to key %s", artifact_id, key)
+                    r = self._cache.set(key, buffer, retry=True)
+                    logger.info("Cache reports key %s created for artifact %d: %s", key, artifact_id, r)
+                    if key not in self._cache:
+                        raise ValueError("Key did not get set")
 
-            return self._cache.get(key)
+            return self._cache[key]
 
     def get_file(
         self, repo: str, artifact_id: int, path: str, to_png: bool, retry: bool = True
