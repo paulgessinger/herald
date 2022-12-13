@@ -43,16 +43,15 @@ class GitHub:
         logger.info("Download of artifact %d complete", artifact_id)
         return r.content
 
-    @contextlib.contextmanager
     def get_artifact(
         self, repo: str, artifact_id: int
-    ) -> Generator[IO[bytes], None, None]:
+    ) -> bytes:
         key = f"artifact_{repo}_{artifact_id}"
 
         if key in self._cache:
             logger.info("Cache hit on key %s", key)
             cache_hits.labels(type="artifact").inc()
-            yield self._cache.read(key)
+            return self._cache.get(key)
 
         else:
 
@@ -65,10 +64,11 @@ class GitHub:
 
             with _artifact_lock:
                 # only first thread downloads the artifact
+                logger.info("Lock acquired for artifact %d, does cache exist now? %s", artifact_id, key in self._cache)
                 if key not in self._cache:
-                    self._cache.add(key, self._download_artifact(repo, artifact_id))
+                    self._cache.set(key, self._download_artifact(repo, artifact_id), retry=True)
 
-            yield self._cache.read(key)
+            return self._cache.get(key)
 
     def get_file(
         self, repo: str, artifact_id: int, path: str, to_png: bool, retry: bool = True
@@ -82,7 +82,10 @@ class GitHub:
             if config.FILE_CACHE:
                 logger.info("Cache miss on key %s", key)
                 cache_misses.labels(type="file").inc()
-            with self.get_artifact(repo, artifact_id) as fh:
+
+            with tempfile.TemporaryFile("r+b") as fh:
+                fh.write(self.get_artifact(repo, artifact_id))
+                fh.seek(0)
                 with zipfile.ZipFile(fh) as z:
                     p = zipfile.Path(
                         z, path + "/" if not path.endswith("/") and path != "" else path
@@ -90,7 +93,7 @@ class GitHub:
                     if path == "" or (p.exists() and p.is_dir()):
                         content = self._generate_dir_listing(p, path).encode()
                         mime = "text/html"
-                        self._cache.add(key, (zstd.compress(content), mime))
+                        self._cache.set(key, (zstd.compress(content), mime))
                         return io.BytesIO(content), mime
                     with z.open(path, "r") as zfh:
                         mime, _ = mimetypes.guess_type(path)
@@ -125,12 +128,12 @@ class GitHub:
                                     dpi=config.PNG_DPI,
                                 )
 
-                                self._cache.add(
+                                self._cache.set(
                                     key,
                                     (zstd.compress(png_file.read_bytes()), "image/png"),
                                 )
                         else:
-                            self._cache.add(key, (zstd.compress(zfh.read()), mime))
+                            self._cache.set(key, (zstd.compress(zfh.read()), mime))
         else:
             cache_hits.labels(type="file").inc()
             logger.info("Cache hit on key %s", key)
