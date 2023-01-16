@@ -151,11 +151,11 @@ class GitHub:
                 logger.info(
                     "Lock acquired for artifact %d, does cache exist now? %s",
                     artifact_id,
-                    key in self._cache,
+                    key in self._artifact_cache,
                 )
                 self._artifact_cache.cull()
                 logger.info("Cull complete")
-                if key not in self._cache:
+                if key not in self._artifact_cache:
                     buffer = self._download_artifact(repo, artifact_id)
                     logger.info(
                         "Have buffer of size %d for artifact %d, writing to key %s",
