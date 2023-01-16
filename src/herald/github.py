@@ -59,8 +59,8 @@ class ArtifactCache:
             path = self.path / safe_key
             if not path.exists():
                 raise KeyError()
-            with path.open("rb") as fh:
-                yield fh
+            buf = io.BytesIO(path.read_bytes())
+            yield buf
 
     def set(self, key: str, value: bytes) -> None:
         safe_key = self.safe_key(key)
