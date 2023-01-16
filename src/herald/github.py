@@ -2,7 +2,6 @@ import contextlib
 from collections.abc import Generator
 from pathlib import PurePath, Path
 from typing import IO, Tuple
-import zipfile
 import io
 import mimetypes
 import tempfile
@@ -13,6 +12,7 @@ from flask import render_template
 import requests
 import zstd
 import pdf2image
+import fs.zipfs
 
 from . import config
 from .logger import logger
@@ -89,19 +89,18 @@ class GitHub:
                 logger.info("Cache miss on key %s", key)
                 cache_misses.labels(type="file").inc()
 
-            with tempfile.TemporaryFile("r+b") as fh:
+            with tempfile.TemporaryFile("wb+") as fh:
                 fh.write(self.get_artifact(repo, artifact_id))
                 fh.seek(0)
-                with zipfile.ZipFile(fh) as z:
-                    p = zipfile.Path(
-                        z, path + "/" if not path.endswith("/") and path != "" else path
-                    )
-                    if path == "" or (p.exists() and p.is_dir()):
-                        content = self._generate_dir_listing(p, path).encode()
+                with fs.zipfs.ReadZipFS(fh) as z:
+                    p = path + "/" if not path.endswith("/") and path != "" else path
+                    if path == "" or (z.exists(p) and z.isdir(p)):
+                        content = self._generate_dir_listing(z, p, path).encode()
                         mime = "text/html"
                         self._cache.set(key, (zstd.compress(content), mime))
                         return io.BytesIO(content), mime
-                    with z.open(path, "r") as zfh:
+
+                    with z.open(p, "rb") as zfh:
                         mime, _ = mimetypes.guess_type(path)
                         if to_png:
                             if mime != "application/pdf":
@@ -160,13 +159,12 @@ class GitHub:
                 logger.error("Type error when unpacking cache for %s, no retry", key, exc_info=True)
                 raise e
 
-    def _generate_dir_listing(self, d: zipfile.Path, url_path: str) -> str:
-        pd = PurePath(str(d))
+    def _generate_dir_listing(self, z: fs.zipfs.ZipFS, p:str, url_path: str) -> str:
+        pd = PurePath(p)
         items = []
-        for item in d.iterdir():
-            pp = PurePath(str(item))
-            url = str(pp.relative_to(pd))
-            if item.is_dir() and not url.endswith("/"):
+        for item in z.listdir(p):
+            url = item
+            if z.isdir(str(pd/item)) and not url.endswith("/"):
                 url += "/"
-            items.append((item.name, url))
+            items.append((item, url))
         return render_template("dir.html", items=items, url_path=url_path)
