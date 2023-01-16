@@ -66,13 +66,15 @@ class GitHub:
                 # only first thread downloads the artifact
                 logger.info("Lock acquired for artifact %d, does cache exist now? %s", artifact_id, key in self._cache)
                 self._cache.cull()
+                logger.info("Cull complete")
                 if key not in self._cache:
                     buffer = self._download_artifact(repo, artifact_id)
                     logger.info("Have buffer for artifact %d, writing to key %s", artifact_id, key)
                     r = self._cache.set(key, buffer, retry=True)
                     logger.info("Cache reports key %s created for artifact %d: %s", key, artifact_id, r)
                     if key not in self._cache:
-                        raise ValueError("Key did not get set")
+                        logger.error("Key did not get set! Returning bytes without caching")
+                        return buffer
 
             return self._cache[key]
 
