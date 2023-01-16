@@ -130,8 +130,6 @@ class GitHub:
     def get_artifact(self, repo: str, artifact_id: int):
         key = f"artifact_{repo}_{artifact_id}"
 
-        self._artifact_cache.cull()  # @TODO: REMOVE
-
         if key in self._artifact_cache:
             logger.info("Cache hit on key %s", key)
             cache_hits.labels(type="artifact").inc()
@@ -155,7 +153,7 @@ class GitHub:
                     artifact_id,
                     key in self._cache,
                 )
-                #  self._artifact_cache.cull()
+                self._artifact_cache.cull()
                 logger.info("Cull complete")
                 if key not in self._cache:
                     buffer = self._download_artifact(repo, artifact_id)
