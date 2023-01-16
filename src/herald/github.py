@@ -40,8 +40,8 @@ class ArtifactCache:
     def __contains__(self, key: str) -> bool:
         safe_key = self.safe_key(key)
         test_path = self.path / safe_key
-        with self.key_lock(safe_key):
-            return test_path.exists()
+        #  with self.key_lock(safe_key):
+        return test_path.exists()
 
     def __getitem__(self, key: str) -> bytes:
         safe_key = self.safe_key(key)
