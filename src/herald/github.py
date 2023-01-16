@@ -69,11 +69,11 @@ class GitHub:
                 logger.info("Cull complete")
                 if key not in self._cache:
                     buffer = self._download_artifact(repo, artifact_id)
-                    logger.info("Have buffer for artifact %d, writing to key %s", artifact_id, key)
+                    logger.info("Have buffer of size %d for artifact %d, writing to key %s", len(buffer), artifact_id, key)
                     r = self._cache.set(key, buffer, retry=True)
                     logger.info("Cache reports key %s created for artifact %d: %s", key, artifact_id, r)
                     if key not in self._cache:
-                        logger.error("Key did not get set! Returning bytes without caching")
+                        logger.error("Key %s did not get set! Returning bytes without caching", key)
                         return buffer
 
             return self._cache[key]
