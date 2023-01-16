@@ -27,8 +27,12 @@ def required(k: str) -> str:
     return os.environ["HERALD_" + k]
 
 
-CACHE_LOCATION: Path = Path(get("CACHE_LOCATION", Path.cwd() / "cache"))
-CACHE_SIZE: int = int(get("CACHE_SIZE", 1024 * 1024 * 1024))
+CACHE_LOCATION: Path = Path(get("CACHE_LOCATION", Path.cwd() / "cache/files"))
+ARTIFACT_CACHE_LOCATION: Path = Path(
+    get("ARTIFACT_CACHE_LOCATION", Path.cwd() / "cache/artifacts")
+)
+CACHE_SIZE: int = int(get("CACHE_SIZE", 512 * 1024 * 1024))
+ARTIFACT_CACHE_SIZE: int = int(get("ARTIFACT_CACHE_SIZE", 512 * 1024 * 1024))
 
 GH_TOKEN: str = required("GH_TOKEN")
 

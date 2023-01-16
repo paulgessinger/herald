@@ -12,7 +12,7 @@ def get_cache_size():
     from . import github
 
     gh = github.GitHub()
-    return gh._cache.volume()
+    return gh._cache.volume() + gh._artifact_cache.total_size()
 
 
 cache_size.set_function(get_cache_size)
