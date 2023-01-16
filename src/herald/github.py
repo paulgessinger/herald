@@ -153,9 +153,9 @@ class GitHub:
                     artifact_id,
                     key in self._artifact_cache,
                 )
-                self._artifact_cache.cull()
-                logger.info("Cull complete")
                 if key not in self._artifact_cache:
+                    self._artifact_cache.cull()
+                    logger.info("Cull complete")
                     buffer = self._download_artifact(repo, artifact_id)
                     logger.info(
                         "Have buffer of size %d for artifact %d, writing to key %s",
