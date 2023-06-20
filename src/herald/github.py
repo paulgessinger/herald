@@ -252,7 +252,7 @@ class GitHub:
         except Exception as e:
             if retry:
                 logger.error(
-                    "Error when unpacking cache item $s, retry once with deleted cache!",
+                    "Error when unpacking cache item %s, retry once with deleted cache!",
                     key,
                     exc_info=True,
                 )
