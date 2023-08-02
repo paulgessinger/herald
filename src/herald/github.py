@@ -125,7 +125,7 @@ class GitHub:
     def __init__(self) -> None:
         self._cache = diskcache.Cache(
             config.CACHE_LOCATION,
-            cache_size=config.CACHE_SIZE,
+            size_limit=config.CACHE_SIZE,
             eviction_policy=config.CACHE_EVICTION_STRATEGY,
         )
         self._artifact_cache = ArtifactCache(
