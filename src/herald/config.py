@@ -32,6 +32,7 @@ ARTIFACT_CACHE_LOCATION: Path = Path(
     get("ARTIFACT_CACHE_LOCATION", Path.cwd() / "cache/artifacts")
 )
 CACHE_SIZE: int = int(get("CACHE_SIZE", 512 * 1024 * 1024))
+CACHE_EVICTION_STRATEGY: str = get("CACHE_EVICTION_STRATEGY", "least-recently-stored")
 ARTIFACT_CACHE_SIZE: int = int(get("ARTIFACT_CACHE_SIZE", 512 * 1024 * 1024))
 
 GH_TOKEN: str = required("GH_TOKEN")

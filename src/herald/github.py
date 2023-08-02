@@ -80,6 +80,11 @@ class ArtifactCache:
     def cull(self) -> None:
         with filelock.FileLock(self.path / "cull.lock", timeout=30):
             size = self.total_size()
+            logger.info(
+                "Culling artifact cache: size=%d, max size=%d", size, self.cache_limit
+            )
+            deleted_bytes = 0
+            num_deleted = 0
             if size > self.cache_limit:
                 items = list(self.path.iterdir())
                 for item in sorted(items, key=lambda i: i.stat().st_mtime):
@@ -91,6 +96,8 @@ class ArtifactCache:
                         if not actual_item.exists() and item.exists():
                             item.unlink()  # delete lock if source file is gone
                         continue
+                    num_deleted += 1
+                    deleted_bytes += item.stat().st_size
                     size -= item.stat().st_size
                     item.unlink()
                     item_lock = item.parent / (item.name + ".lock")
@@ -98,6 +105,7 @@ class ArtifactCache:
                         item_lock.unlink()
                     if size <= self.cache_limit:
                         break
+            logger.info("Culled %d items, %d bytes", num_deleted, deleted_bytes)
 
 
 class ArtifactExpired(RuntimeError):
@@ -109,7 +117,7 @@ class GitHub:
         self._cache = diskcache.Cache(
             config.CACHE_LOCATION,
             cache_size=config.CACHE_SIZE,
-            eviction_policy="least-frequently-used",
+            eviction_policy=config.CACHE_EVICTION_STRATEGY,
         )
         self._artifact_cache = ArtifactCache(
             path=config.ARTIFACT_CACHE_LOCATION, cache_size=config.ARTIFACT_CACHE_SIZE
