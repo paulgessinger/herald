@@ -19,7 +19,7 @@ import filelock
 
 from . import config
 from .logger import logger
-from .metric import cache_hits, cache_misses, cache_read_errors
+from .metric import cache_hits, cache_misses, cache_read_errors, cache_size_cull_total
 
 
 class ArtifactCache:
@@ -105,6 +105,7 @@ class ArtifactCache:
                         item_lock.unlink()
                     if size <= self.cache_limit:
                         break
+            cache_size_cull_total.inc(num_deleted)
             logger.info("Culled %d items, %d bytes", num_deleted, deleted_bytes)
 
 

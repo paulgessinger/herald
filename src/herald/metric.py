@@ -36,5 +36,7 @@ cache_size_max = Gauge(
     "herald_cache_size_max_bytes", "Maximum size of the cache", labelnames=["type"]
 )
 
+cache_size_cull_total = Counter("herald_cache_size_cull_total", "Total number of culls")
+
 cache_size_max.labels("file").set(config.CACHE_SIZE)
 cache_size_max.labels("artifact").set(config.ARTIFACT_CACHE_SIZE)
