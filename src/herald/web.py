@@ -101,6 +101,11 @@ def create_app() -> Quart:
 
     @app.get("/metrics")
     async def metrics():
+        gh = github.GitHub()
+
+        cache_size.labels(type="file").set(gh._cache.volume())
+        cache_size.labels(type="artifacts").set(gh._artifact_cache.total_size())
+
         registry = core.REGISTRY
         data = generate_latest(registry)
         return data.decode("utf-8")
