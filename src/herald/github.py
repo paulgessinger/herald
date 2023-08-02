@@ -1,5 +1,6 @@
 import contextlib
 from collections.abc import Generator
+import asyncio
 from pathlib import PurePath, Path
 from typing import IO, Tuple
 import io
@@ -9,7 +10,7 @@ import os
 import hashlib
 
 import diskcache
-from flask import render_template
+from quart import render_template
 import requests
 import zstd
 import pdf2image
@@ -98,8 +99,10 @@ class ArtifactCache:
                     if size <= self.cache_limit:
                         break
 
+
 class ArtifactExpired(RuntimeError):
     pass
+
 
 class GitHub:
     def __init__(self) -> None:
@@ -143,7 +146,6 @@ class GitHub:
             #  return self._artifact_cache[key]
 
         else:
-
             logger.info("Cache miss on key %s", key)
             cache_misses.labels(type="artifact").inc()
 
@@ -280,4 +282,4 @@ class GitHub:
             if z.isdir(str(pd / item)) and not url.endswith("/"):
                 url += "/"
             items.append((item, url))
-        return render_template("dir.html", items=items, url_path=url_path)
+        return asyncio.run(render_template("dir.html", items=items, url_path=url_path))
