@@ -87,7 +87,7 @@ class ArtifactCache:
                         continue
                     if item.suffix == ".lock":
                         actual_item = item.parent / item.stem
-                        if not actual_item.exists():
+                        if not actual_item.exists() and item.exists():
                             item.unlink()  # delete lock if source file is gone
                         continue
                     size -= item.stat().st_size
@@ -98,6 +98,8 @@ class ArtifactCache:
                     if size <= self.cache_limit:
                         break
 
+class ArtifactExpired(RuntimeError):
+    pass
 
 class GitHub:
     def __init__(self) -> None:
@@ -116,6 +118,9 @@ class GitHub:
             f"https://api.github.com/repos/{repo}/actions/artifacts/{artifact_id}/zip",
             headers={"Authorization": f"Bearer {config.GH_TOKEN}"},
         )
+        if r.status_code == 410:
+            logger.info("Artifact %d has expired", artifact_id)
+            raise ArtifactExpired(f"Artifact {artifact_id} has expired")
         try:
             r.raise_for_status()
         except Exception as e:
@@ -154,6 +159,7 @@ class GitHub:
                     key in self._artifact_cache,
                 )
                 if key not in self._artifact_cache:
+                    logger.info("Culling artifact cache")
                     self._artifact_cache.cull()
                     logger.info("Cull complete")
                     buffer = self._download_artifact(repo, artifact_id)

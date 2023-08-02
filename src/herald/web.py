@@ -41,7 +41,6 @@ def create_app() -> Flask:
     @app.route("/view/<owner>/<repo>/<int:artifact_id>/")
     @app.route("/view/<owner>/<repo>/<int:artifact_id>/<path:file>")
     def view(owner: str, repo: str, artifact_id: int, file: str = ""):
-
         if config.REPO_ALLOWLIST is not None:
             if f"{owner}/{repo}" not in config.REPO_ALLOWLIST:
                 logger.debug(
@@ -91,6 +90,8 @@ def create_app() -> Flask:
             if e.response.status_code == 404:
                 abort(404)
             raise
+        except github.ArtifactExpired:
+            abort(410)
         except KeyError:
             abort(404)
 
