@@ -24,6 +24,10 @@ cache_misses = Counter(
     "herald_cache_misses", "Total number of cache misses", labelnames=["type"]
 )
 
+cache_read_errors = Counter(
+    "herald_cache_read_errors", "Total number of cache read errors", labelnames=["key"]
+)
+
 cache_etag_hits = Counter("herald_etag_hits", "Total number of etag hits")
 
 cache_size_config = Info(

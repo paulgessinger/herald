@@ -19,7 +19,7 @@ import filelock
 
 from . import config
 from .logger import logger
-from .metric import cache_hits, cache_misses
+from .metric import cache_hits, cache_misses, cache_read_errors
 
 
 class ArtifactCache:
@@ -259,6 +259,7 @@ class GitHub:
 
         except Exception as e:
             if retry:
+                cache_read_errors.labels(key=key).inc()
                 logger.error(
                     "Error when unpacking cache item %s, retry once with deleted cache!",
                     key,
