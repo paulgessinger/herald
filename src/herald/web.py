@@ -8,7 +8,8 @@ from prometheus_client.exposition import generate_latest
 
 from .metric import (
     request_counter,
-    cache_size,
+    cache_size_bytes,
+    cache_item_total,
     cache_etag_hits,
 )
 from . import github, config
@@ -103,8 +104,11 @@ def create_app() -> Quart:
     async def metrics():
         gh = github.GitHub()
 
-        cache_size.labels(type="file").set(gh._cache.volume())
-        cache_size.labels(type="artifacts").set(gh._artifact_cache.total_size())
+        cache_size_bytes.labels(type="file").set(gh._cache.volume())
+        cache_size_bytes.labels(type="artifacts").set(gh._artifact_cache.total_size())
+
+        cache_item_total.labels(type="file").set(len(gh._cache))
+        cache_item_total.labels(type="artifacts").set(len(gh._artifact_cache))
 
         registry = core.REGISTRY
         data = generate_latest(registry)

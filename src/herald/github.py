@@ -19,7 +19,7 @@ import filelock
 
 from . import config
 from .logger import logger
-from .metric import cache_hits, cache_misses, cache_read_errors, cache_size_cull_total
+from .metric import cache_hits, cache_misses, cache_read_errors, cache_cull_total
 
 
 class ArtifactCache:
@@ -77,6 +77,14 @@ class ArtifactCache:
             result += file.stat().st_size
         return result
 
+    def __len__(self) -> int:
+        result = 0
+        for file in self.path.iterdir():
+            if file.suffix == ".lock":
+                continue
+            result += 1
+        return result
+
     def cull(self) -> None:
         with filelock.FileLock(self.path / "cull.lock", timeout=30):
             size = self.total_size()
@@ -105,7 +113,7 @@ class ArtifactCache:
                         item_lock.unlink()
                     if size <= self.cache_limit:
                         break
-            cache_size_cull_total.inc(num_deleted)
+            cache_cull_total.inc(num_deleted)
             logger.info("Culled %d items, %d bytes", num_deleted, deleted_bytes)
 
 
