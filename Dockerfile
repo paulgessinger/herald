@@ -3,7 +3,7 @@ MAINTAINER Paul Gessinger <hello@paulgessinger.com>
 
 RUN apt-get update && apt-get install -y poppler-utils && apt-get clean
 
-RUN pip install --no-cache-dir poetry gunicorn
+RUN pip install --no-cache-dir poetry hypercorn
 
 ENV APP_PATH /app
 WORKDIR $APP_PATH

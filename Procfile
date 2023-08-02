@@ -1,1 +1,1 @@
-web: gunicorn --threads 8 -b :$PORT wsgi
+web: hypercorn -b :$PORT asgi:application
