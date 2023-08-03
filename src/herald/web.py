@@ -23,6 +23,7 @@ from gidgethub.aiohttp import GitHubAPI
 import fs.errors
 from quart_rate_limiter import RateLimiter, rate_limit
 from async_lru import alru_cache
+from lru import LRU as LRUDict
 
 from .metric import (
     request_counter,
@@ -88,6 +89,8 @@ def create_app() -> Quart:
     app = Quart("herald")
     RateLimiter(app)
 
+    artifact_expired = LRUDict(1024)
+
     gh = github.GitHub()
 
     if app.debug:
@@ -118,6 +121,10 @@ def create_app() -> Quart:
             owner,
             repo,
         )
+
+        if artifact_id in artifact_expired:
+            logger.debug("Accessing artifact #%d that has expired", artifact_id)
+            abort(410)
 
         if file == "" and not request.path.endswith("/"):
             return redirect(request.path + "/")
@@ -162,7 +169,8 @@ def create_app() -> Quart:
                 except Exception as e:
                     details: str | None = None
                     if isinstance(e, github.ArtifactExpired):
-                        details = "Artifact #{artifact_id} has expired on GitHub"
+                        details = f"Artifact #{artifact_id} has expired on GitHub"
+                        artifact_expired[artifact_id] = True
                     elif isinstance(e, fs.errors.ResourceNotFound):
                         details = f"File {file} not found in artifact"
 
@@ -213,6 +221,7 @@ def create_app() -> Quart:
                 abort(404)
             raise
         except github.ArtifactExpired:
+            artifact_expired[artifact_id] = True
             abort(410)
         except KeyError:
             abort(404)
