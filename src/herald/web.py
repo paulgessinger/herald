@@ -1,6 +1,9 @@
+import asyncio
 import logging
+from typing import IO, Tuple
 
-from quart import Quart, abort, make_response, redirect, request
+from quart import Quart, abort, make_response, redirect, render_template, request
+from quart.helpers import stream_with_context
 from quart.utils import run_sync
 import requests
 from prometheus_client import core
@@ -42,7 +45,9 @@ def create_app() -> Quart:
     @app.route("/view/<owner>/<repo>/<int:artifact_id>")
     @app.route("/view/<owner>/<repo>/<int:artifact_id>/")
     @app.route("/view/<owner>/<repo>/<int:artifact_id>/<path:file>")
-    async def view(owner: str, repo: str, artifact_id: int, file: str = ""):
+    async def view_by_artifact_id(
+        owner: str, repo: str, artifact_id: int, file: str = ""
+    ):
         if config.REPO_ALLOWLIST is not None:
             if f"{owner}/{repo}" not in config.REPO_ALLOWLIST:
                 logger.debug(
@@ -83,14 +88,49 @@ def create_app() -> Quart:
                 to_png,
             )
 
-            buf, mime = await run_sync(gh.get_file)(
-                f"{owner}/{repo}", artifact_id, file, to_png=to_png
-            )
-            response = await make_response(buf.read())
-            response.headers["Content-Type"] = mime
-            response.headers["Cache-Control"] = "max-age=31536000"
-            response.headers["Etag"] = exp_etag
+            async def async_get_file() -> Tuple[IO[bytes], str]:
+                return await run_sync(gh.get_file)(
+                    f"{owner}/{repo}", artifact_id, file, to_png=to_png
+                )
+
+            @stream_with_context
+            async def reload_response():
+                yield await render_template(
+                    "loading.html",
+                    file=file,
+                    repo=f"{owner}/{repo}",
+                    artifact_id=artifact_id,
+                )
+                await run_sync(gh.get_file)(
+                    f"{owner}/{repo}", artifact_id, file, to_png=to_png
+                )
+                yield "<script>window.location.reload()</script>"
+
+            # Assumption: curl etc will `Accept` *anything*
+            is_browser: bool = request.headers.get("Accept", "*/*") != "*/*"
+            if is_browser:
+                logger.debug(
+                    "We think this is a browser request based on Accept header %s",
+                    request.headers.get("Accept"),
+                )
+            if (
+                gh.is_file_cached(f"{owner}/{repo}", artifact_id, file, to_png=to_png)
+                or not is_browser
+            ):
+                logger.debug("File is cached, call and return immediately")
+                buf, mime = await async_get_file()
+                response = await make_response(buf.read())
+                response.headers["Content-Type"] = mime
+                response.headers["Cache-Control"] = "max-age=31536000"
+                response.headers["Etag"] = exp_etag
+
+            else:
+                logger.debug("File is not cached")
+                response = await make_response(reload_response())
+                response.headers["Cache-Control"] = "no-cache"
+
             return response
+
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 404:
                 abort(404)

@@ -205,13 +205,25 @@ class GitHub:
             with self._artifact_cache.open(key) as fh:
                 yield fh
 
-    def get_file(
-        self, repo: str, artifact_id: int, path: str, to_png: bool, retry: bool = True
-    ) -> Tuple[IO[bytes], str]:
+    @staticmethod
+    def _get_file_key(repo: str, artifact_id: int, path: str, to_png: bool) -> str:
         key = f"file_{repo}_{artifact_id}_{path}"
 
         if to_png:
             key += "_png"
+
+        return key
+
+    def is_file_cached(
+        self, repo: str, artifact_id: int, path: str, to_png: bool
+    ) -> bool:
+        key = self._get_file_key(repo, artifact_id, path, to_png)
+        return key in self._cache
+
+    def get_file(
+        self, repo: str, artifact_id: int, path: str, to_png: bool, retry: bool = True
+    ) -> Tuple[IO[bytes], str]:
+        key = self._get_file_key(repo, artifact_id, path, to_png)
 
         if not config.FILE_CACHE or key not in self._cache:
             if config.FILE_CACHE:
