@@ -1,5 +1,4 @@
-from cProfile import label
-from prometheus_client import core, Counter, Gauge, CollectorRegistry, Info
+from prometheus_client import Counter, Gauge
 
 from . import config
 
@@ -32,6 +31,9 @@ cache_size_max = Gauge(
     "herald_cache_size_max_bytes", "Maximum size of the cache", labelnames=["type"]
 )
 
+github_api_call_count = Counter(
+    "herald_github_api_call_count", "Number of github api calls", labelnames=["type"]
+)
 
 cache_size_max.labels("file").set(config.CACHE_SIZE)
 cache_size_max.labels("artifact").set(config.ARTIFACT_CACHE_SIZE)

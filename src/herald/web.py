@@ -30,6 +30,7 @@ from .metric import (
     cache_size_bytes,
     cache_item_total,
     cache_etag_hits,
+    github_api_call_count,
 )
 from . import github, config
 from .logger import logger
@@ -66,6 +67,8 @@ async def find_artifact_id(owner: str, repo: str, run_id: int, name: str) -> int
         gh = GitHubAPI(session, "herald", oauth_token=config.GH_TOKEN)
 
         url = f"/repos/{owner}/{repo}/actions/runs/{run_id}/artifacts"
+
+        github_api_call_count.labels("get_run_artifacts").inc()
         async for a in gh.getiter(url, iterable_key="artifacts"):
             if a["name"] == name:
                 return a["id"]
