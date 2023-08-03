@@ -229,6 +229,8 @@ def create_app() -> Quart:
         if not check_repo_allowed(owner, repo):
             abort(403)
 
+        to_png = request.args.get("to_png", type=bool, default=False)
+
         artifact_id = None
         try:
             artifact_id = await find_artifact_id(owner, repo, run_id, name)
@@ -252,6 +254,7 @@ def create_app() -> Quart:
                 repo=repo,
                 artifact_id=artifact_id,
                 file=file,
+                to_png=1 if to_png else None,
             ),
             301,
         )
