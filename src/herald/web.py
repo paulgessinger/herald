@@ -134,7 +134,7 @@ def create_app() -> Quart:
                     request.headers.get("Accept"),
                 )
             if (
-                gh.is_file_cached(f"{owner}/{repo}", artifact_id, file, to_png=to_png)
+                gh.is_artifact_cached(f"{owner}/{repo}", artifact_id)
                 or not is_browser
                 or not config.ENABLE_LOADING_PAGE
             ):

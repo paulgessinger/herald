@@ -5,14 +5,18 @@
 	<link rel="stylesheet" href="{{ url_for('static', filename='bulma.min.css') }}">
 </head>
 <body>
-
 	<div class="container is-max-desktop">
 		<div class="box m-5" id="content">
 			<div class="level">
 				<div class="level-left">
 					<div class="level-item">
 						<div class="content">
-							Loading <strong>{{file}}</strong> from <strong>{{repo}}</strong> artifact <strong>#{{artifact_id}}</strong>
+
+							Loading 
+							{% if file %}
+							<strong>{{file}}</strong> from 
+							{% endif %}
+							<strong>{{repo}}</strong> artifact <strong>#{{artifact_id}}</strong>
 						</div>
 					</div>
 				</div>
@@ -25,5 +29,4 @@
 
 			</div>
 		</div>
-
 </body>

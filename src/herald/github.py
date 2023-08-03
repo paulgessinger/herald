@@ -153,8 +153,7 @@ class GitHub:
 
     @contextlib.contextmanager
     def get_artifact(self, repo: str, artifact_id: int):
-        key = f"artifact_{repo}_{artifact_id}"
-
+        key = self._get_artifact_key(repo, artifact_id)
         if key in self._artifact_cache:
             logger.info("Cache hit on key %s", key)
             cache_hits.labels(type="artifact").inc()
@@ -214,11 +213,19 @@ class GitHub:
 
         return key
 
+    @staticmethod
+    def _get_artifact_key(repo: str, artifact_id: int) -> str:
+        return f"artifact_{repo}_{artifact_id}"
+
     def is_file_cached(
         self, repo: str, artifact_id: int, path: str, to_png: bool
     ) -> bool:
         key = self._get_file_key(repo, artifact_id, path, to_png)
         return key in self._cache
+
+    def is_artifact_cached(self, repo: str, artifact_id: int) -> bool:
+        key = self._get_artifact_key(repo, artifact_id)
+        return key in self._artifact_cache
 
     def get_file(
         self, repo: str, artifact_id: int, path: str, to_png: bool, retry: bool = True
