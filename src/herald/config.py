@@ -37,6 +37,7 @@ ARTIFACT_CACHE_SIZE: int = int(get("ARTIFACT_CACHE_SIZE", 512 * 1024 * 1024))
 
 GH_TOKEN: str = required("GH_TOKEN")
 
+ENABLE_LOADING_PAGE: bool = get("ENABLE_LOADING_PAGE", "True") != "False"
 
 _repo_allowlist: str | None = get("REPO_ALLOWLIST", None)
 REPO_ALLOWLIST: List[str] | None = (

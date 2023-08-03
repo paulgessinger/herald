@@ -1,0 +1,22 @@
+<div class="content">
+	{% if details %}
+	<article class="message is-danger">
+		<div class="message-header">
+			<p class="content">
+				Loading failed for <strong>{{file}}</strong> from <strong>{{repo}}</strong> artifact <strong>#{{artifact_id}}</strong>
+			</p>
+		</div>
+		<div class="message-body">
+			{{ details }}
+		</div>
+	</article>
+	{% else %}
+	<article class="message is-danger">
+		<div class="message-body">
+			<p class="content">
+				Loading failed for <strong>{{file}}</strong> from <strong>{{repo}}</strong> artifact <strong>#{{artifact_id}}</strong>
+			</p>
+		</div>
+	</article>
+	{% endif %}
+</div>

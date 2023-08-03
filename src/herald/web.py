@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from typing import IO, Tuple
 
@@ -101,9 +102,28 @@ def create_app() -> Quart:
                     repo=f"{owner}/{repo}",
                     artifact_id=artifact_id,
                 )
-                await run_sync(gh.get_file)(
-                    f"{owner}/{repo}", artifact_id, file, to_png=to_png
-                )
+                try:
+                    await run_sync(gh.get_file)(
+                        f"{owner}/{repo}", artifact_id, file, to_png=to_png
+                    )
+                except Exception as e:
+                    details = None
+                    if isinstance(e, github.ArtifactExpired):
+                        details = "Artifact has expired on GitHub"
+                    message = json.dumps(
+                        await render_template(
+                            "error.html",
+                            file=file,
+                            repo=f"{owner}/{repo}",
+                            artifact_id=artifact_id,
+                            details=details,
+                        )
+                    )
+                    yield f"""
+                        <script>
+                        document.getElementById("content").innerHTML = {message}
+                        </script>"""
+                    raise
                 yield "<script>window.location.reload()</script>"
 
             # Assumption: curl etc will `Accept` *anything*
@@ -116,6 +136,7 @@ def create_app() -> Quart:
             if (
                 gh.is_file_cached(f"{owner}/{repo}", artifact_id, file, to_png=to_png)
                 or not is_browser
+                or not config.ENABLE_LOADING_PAGE
             ):
                 logger.debug("File is cached, call and return immediately")
                 buf, mime = await async_get_file()
