@@ -1,14 +1,28 @@
 import asyncio
+from datetime import timedelta
 import json
 import logging
 from typing import IO, Tuple
 
-from quart import Quart, abort, make_response, redirect, render_template, request
+from quart import (
+    Quart,
+    abort,
+    make_response,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from quart.helpers import stream_with_context
 from quart.utils import run_sync
 import requests
 from prometheus_client import core
 from prometheus_client.exposition import generate_latest
+import aiohttp
+from gidgethub.aiohttp import GitHubAPI
+import fs.errors
+from quart_rate_limiter import RateLimiter, rate_limit
+from async_lru import alru_cache
 
 from .metric import (
     request_counter,
@@ -25,8 +39,54 @@ logging.basicConfig(
 )
 
 
+def check_repo_allowed(owner: str, repo: str) -> bool:
+    if config.REPO_ALLOWLIST is None:
+        return True
+    if f"{owner}/{repo}" in config.REPO_ALLOWLIST:
+        return True
+
+    logger.debug(
+        "Requested repo is not on repo that is on allowlist: %s/%s",
+        owner,
+        repo,
+    )
+
+    return False
+
+
+class ArtifactNotFound(Exception):
+    pass
+
+
+@alru_cache(maxsize=1024)
+async def find_artifact_id(owner: str, repo: str, run_id: int, name: str) -> int | None:
+    logger.debug("Checking GH api for artifact named %s for run #%d", name, run_id)
+    async with aiohttp.ClientSession() as session:
+        gh = GitHubAPI(session, "herald", oauth_token=config.GH_TOKEN)
+
+        url = f"/repos/{owner}/{repo}/actions/runs/{run_id}/artifacts"
+        async for a in gh.getiter(url, iterable_key="artifacts"):
+            if a["name"] == name:
+                return a["id"]
+
+        # Check if the run is still in progress
+        run = await gh.getitem(f"/repos/{owner}/{repo}/actions/runs/{run_id}")
+        if run["status"] != "completed":
+            logger.debug(
+                "Artifact named %s for run #%d not found, but is not complete yet",
+                name,
+                run_id,
+            )
+            # Raise exception to break caching in this case!
+            raise ArtifactNotFound()
+
+        # Not found and complete, we can safely cache the None result
+        return None
+
+
 def create_app() -> Quart:
     app = Quart("herald")
+    RateLimiter(app)
 
     gh = github.GitHub()
 
@@ -46,17 +106,12 @@ def create_app() -> Quart:
     @app.route("/view/<owner>/<repo>/<int:artifact_id>")
     @app.route("/view/<owner>/<repo>/<int:artifact_id>/")
     @app.route("/view/<owner>/<repo>/<int:artifact_id>/<path:file>")
+    @rate_limit(config.ARTIFACT_RATE_LIMIT_PER_MIN, timedelta(minutes=1))
     async def view_by_artifact_id(
         owner: str, repo: str, artifact_id: int, file: str = ""
     ):
-        if config.REPO_ALLOWLIST is not None:
-            if f"{owner}/{repo}" not in config.REPO_ALLOWLIST:
-                logger.debug(
-                    "Requested artifact is not on repo that is on allowlist: %s/%s",
-                    owner,
-                    repo,
-                )
-                abort(403)
+        if not check_repo_allowed(owner, repo):
+            abort(403)
 
         logger.debug(
             "Requested artifact is on repo that is on allowlist: %s/%s",
@@ -103,13 +158,14 @@ def create_app() -> Quart:
                     artifact_id=artifact_id,
                 )
                 try:
-                    await run_sync(gh.get_file)(
-                        f"{owner}/{repo}", artifact_id, file, to_png=to_png
-                    )
+                    await async_get_file()
                 except Exception as e:
-                    details = None
+                    details: str | None = None
                     if isinstance(e, github.ArtifactExpired):
-                        details = "Artifact has expired on GitHub"
+                        details = "Artifact #{artifact_id} has expired on GitHub"
+                    elif isinstance(e, fs.errors.ResourceNotFound):
+                        details = f"File {file} not found in artifact"
+
                     message = json.dumps(
                         await render_template(
                             "error.html",
@@ -124,7 +180,7 @@ def create_app() -> Quart:
                         document.getElementById("content").innerHTML = {message}
                         </script>"""
                     raise
-                yield "<script>window.location.reload()</script>"
+                yield "<script>" + "window.location.reload()" + "</script>"
 
             # Assumption: curl etc will `Accept` *anything*
             is_browser: bool = request.headers.get("Accept", "*/*") != "*/*"
@@ -160,6 +216,45 @@ def create_app() -> Quart:
             abort(410)
         except KeyError:
             abort(404)
+        except fs.errors.ResourceNotFound:
+            abort(404)
+
+    @app.get("/view/<owner>/<repo>/runs/<int:run_id>/artifacts/<name>")
+    @app.get("/view/<owner>/<repo>/runs/<int:run_id>/artifacts/<name>/")
+    @app.get("/view/<owner>/<repo>/runs/<int:run_id>/artifacts/<name>/<path:file>")
+    @rate_limit(config.REDIRECT_RATE_LIMIT_PER_MIN, timedelta(minutes=1))
+    async def redirect_run_id_name(
+        owner: str, repo: str, run_id: int, name: str, file: str = ""
+    ):
+        if not check_repo_allowed(owner, repo):
+            abort(403)
+
+        artifact_id = None
+        try:
+            artifact_id = await find_artifact_id(owner, repo, run_id, name)
+        except ArtifactNotFound:
+            # Not found and run not complete, so don't cache it
+            pass
+        if artifact_id is None:
+            logger.debug(
+                "Artifact not found: repo %s/%s, run id #%d, name %s",
+                owner,
+                repo,
+                run_id,
+                name,
+            )
+            abort(404)
+
+        return redirect(
+            url_for(
+                "view_by_artifact_id",
+                owner=owner,
+                repo=repo,
+                artifact_id=artifact_id,
+                file=file,
+            ),
+            301,
+        )
 
     @app.get("/metrics")
     async def metrics():

@@ -47,3 +47,6 @@ REPO_ALLOWLIST: List[str] | None = (
 FILE_CACHE: bool = get("FILE_CACHE", "True") != "False"
 
 PNG_DPI: int = int(get("PNG_DPI", 300))
+
+ARTIFACT_RATE_LIMIT_PER_MIN: int = int(get("ARTIFACT_RATE_LIMIT_PER_MIN", 120))
+REDIRECT_RATE_LIMIT_PER_MIN: int = int(get("ARTIFACT_RATE_LIMIT_PER_MIN", 120))
