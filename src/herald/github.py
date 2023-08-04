@@ -127,6 +127,10 @@ class ArtifactExpired(RuntimeError):
     pass
 
 
+class ArtifactTooLarge(RuntimeError):
+    pass
+
+
 class GitHub:
     def __init__(self) -> None:
         self._cache = diskcache.Cache(
@@ -142,9 +146,26 @@ class GitHub:
         logger.info("Downloading artifact %d from GitHub", artifact_id)
         github_api_call_count.labels(type="artifact_download").inc()
         r = requests.get(
+            f"https://api.github.com/repos/{repo}/actions/artifacts/{artifact_id}",
+            headers={"Authorization": f"Bearer {config.GH_TOKEN}"},
+        )
+        r.raise_for_status()
+        data = r.json()
+        if data["expired"]:
+            logger.info("Artifact %d has expired", artifact_id)
+            raise ArtifactExpired(f"Artifact {artifact_id} has expired")
+        if data["size_in_bytes"] > config.MAX_ARTIFACT_SIZE:
+            logger.warning("Artifact %d is too large, refusing download", artifact_id)
+            raise ArtifactTooLarge(
+                f"Artifact {artifact_id} is too large ({data['size_in_bytes']})"
+            )
+
+        github_api_call_count.labels(type="artifact_download").inc()
+        r = requests.get(
             f"https://api.github.com/repos/{repo}/actions/artifacts/{artifact_id}/zip",
             headers={"Authorization": f"Bearer {config.GH_TOKEN}"},
         )
+
         if r.status_code == 410:
             logger.info("Artifact %d has expired", artifact_id)
             raise ArtifactExpired(f"Artifact {artifact_id} has expired")

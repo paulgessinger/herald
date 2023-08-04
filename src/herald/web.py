@@ -174,6 +174,8 @@ def create_app() -> Quart:
                     if isinstance(e, github.ArtifactExpired):
                         details = f"Artifact #{artifact_id} has expired on GitHub"
                         artifact_expired[artifact_id] = True
+                    if isinstance(e, github.ArtifactTooLarge):
+                        details = f"Artifact #{artifact_id} is too large to download"
                     elif isinstance(e, fs.errors.ResourceNotFound):
                         details = f"File {file} not found in artifact"
 
@@ -190,7 +192,7 @@ def create_app() -> Quart:
                         <script>
                         document.getElementById("content").innerHTML = {message}
                         </script>"""
-                    raise
+                    return
                 yield "<script>" + "window.location.reload()" + "</script>"
 
             # Assumption: curl etc will `Accept` *anything*
@@ -226,6 +228,8 @@ def create_app() -> Quart:
         except github.ArtifactExpired:
             artifact_expired[artifact_id] = True
             abort(410)
+        except github.ArtifactTooLarge:
+            abort(507)
         except KeyError:
             abort(404)
         except fs.errors.ResourceNotFound:
