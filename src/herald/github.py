@@ -25,6 +25,8 @@ from .metric import (
     cache_read_errors,
     cache_cull_total,
     github_api_call_count,
+    artifact_size,
+    artifact_size_rejected,
 )
 
 
@@ -154,8 +156,10 @@ class GitHub:
         if data["expired"]:
             logger.info("Artifact %d has expired", artifact_id)
             raise ArtifactExpired(f"Artifact {artifact_id} has expired")
+        artifact_size.observe(data["size_in_bytes"])
         if data["size_in_bytes"] > config.MAX_ARTIFACT_SIZE:
             logger.warning("Artifact %d is too large, refusing download", artifact_id)
+            artifact_size_rejected.inc()
             raise ArtifactTooLarge(
                 f"Artifact {artifact_id} is too large ({data['size_in_bytes']})"
             )

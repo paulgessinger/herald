@@ -1,4 +1,4 @@
-from prometheus_client import Counter, Gauge
+from prometheus_client import Counter, Gauge, Histogram
 
 from . import config
 
@@ -33,6 +33,16 @@ cache_size_max = Gauge(
 
 github_api_call_count = Counter(
     "herald_github_api_call_count", "Number of github api calls", labelnames=["type"]
+)
+
+artifact_size = Histogram(
+    "herald_artifact_size_bytes",
+    "Size of artifacts",
+    buckets=[0] + [10**p for p in range(5, 12)] + [float("inf")],
+)
+artifact_size_rejected = Counter(
+    "herald_artifact_size_rejected_total",
+    "How often an artifact was rejected due to size",
 )
 
 cache_size_max.labels("file").set(config.CACHE_SIZE)
