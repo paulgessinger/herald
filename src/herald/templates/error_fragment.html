@@ -1,0 +1,18 @@
+<article class="message is-danger">
+	<div class="message-header">
+		<p class="content">
+			Loading failed: {{ error_type }}
+		</p>
+	</div>
+	<div class="message-body">
+		{% if error_type == "ArtifactExpired" %}
+		Artifact <strong>#{{ error.artifact_id }}</strong> in <strong>{{ error.repo }}</strong> has expired
+		{% elif error_type == "ArtifactTooLarge" %}
+		Artifact <strong>#{{ error.artifact_id }}</strong> in <strong>{{ error.repo }}</strong> is too large to download
+		{% elif error_type == "ArtifactFileNotFound" %}
+		File <strong>{{ error.file_name }}</strong> from artifact <strong>#{{ error.artifact_id }}</strong> in <strong>{{ error.repo }}</strong> was not found
+		{% elif error_type == "ArtifactNotFound" %}
+		Artifact <strong>#{{ error.artifact_id }}</strong> in <strong>{{ error.repo }}</strong> was not found
+		{% endif %}
+	</div>
+</article>

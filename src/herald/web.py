@@ -99,6 +99,26 @@ def create_app() -> Quart:
     #  if app.debug:
     logger.setLevel(logging.DEBUG)
 
+    @app.errorhandler(github.ArtifactError)
+    async def artifact_error_handler(e):
+        is_htmx = "HX-Request" in request.headers
+        if is_htmx:
+            tpl = "error_fragment.html"
+        else:
+            tpl = "error.html"
+        output = await render_template(tpl, error=e, error_type=e.__class__.__name__)
+
+        if isinstance(e, github.ArtifactExpired):
+            status = 410
+        elif isinstance(e, github.ArtifactTooLarge):
+            status = 507
+        elif isinstance(e, github.ArtifactFileNotFound):
+            status = 404
+        elif isinstance(e, github.ArtifactNotFound):
+            status = 404
+
+        return output, 200 if is_htmx else status
+
     @app.before_request
     async def on_request():
         if request.path == "/metrics":
@@ -113,9 +133,7 @@ def create_app() -> Quart:
     @app.route("/view/<owner>/<repo>/<int:artifact_id>/")
     @app.route("/view/<owner>/<repo>/<int:artifact_id>/<path:file>")
     @rate_limit(config.ARTIFACT_RATE_LIMIT_PER_MIN, timedelta(minutes=1))
-    async def view_by_artifact_id(
-        owner: str, repo: str, artifact_id: int, file: str = ""
-    ):
+    async def view(owner: str, repo: str, artifact_id: int, file: str = ""):
         if not check_repo_allowed(owner, repo):
             abort(403)
 
@@ -127,7 +145,9 @@ def create_app() -> Quart:
 
         if artifact_id in artifact_expired:
             logger.debug("Accessing artifact #%d that has expired", artifact_id)
-            abort(410)
+            raise github.ArtifactExpired(
+                artifact_id=artifact_id, repo=f"{owner}/{repo}"
+            )
 
         if file == "" and not request.path.endswith("/"):
             return redirect(request.path + "/")
@@ -214,26 +234,55 @@ def create_app() -> Quart:
                 response.headers["Cache-Control"] = "max-age=31536000"
                 response.headers["Etag"] = exp_etag
 
+                if "HX-Request" in request.headers:
+                    response.headers["HX-Redirect"] = request.url
+
             else:
                 logger.debug("File is not cached")
-                response = await make_response(reload_response())
-                response.headers["Cache-Control"] = "no-cache"
+
+                return redirect(
+                    url_for(
+                        "loading",
+                        owner=owner,
+                        repo=repo,
+                        artifact_id=artifact_id,
+                        file=file,
+                    )
+                )
 
             return response
 
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 404:
-                abort(404)
-            raise
+        #  except requests.exceptions.HTTPError as e:
+        #  if e.response.status_code == 404:
+        #  abort(404)
+        #  raise
         except github.ArtifactExpired:
             artifact_expired[artifact_id] = True
-            abort(410)
-        except github.ArtifactTooLarge:
-            abort(507)
+            raise
+        #  abort(410)
+        #  except github.ArtifactTooLarge:
+        #  abort(507)
         except KeyError:
             abort(404)
-        except fs.errors.ResourceNotFound:
-            abort(404)
+        #  except fs.errors.ResourceNotFound:
+        #  abort(404)
+
+    @app.route("/loading/<owner>/<repo>/<int:artifact_id>/")
+    @app.route("/loading/<owner>/<repo>/<int:artifact_id>/<path:file>")
+    async def loading(owner: str, repo: str, artifact_id: int, file: str = ""):
+        # @TODO: Redirect right away if available
+        response = await make_response(
+            await render_template(
+                "loading.html",
+                file=file,
+                owner=owner,
+                repo=repo,
+                artifact_id=artifact_id,
+            )
+        )
+        response.headers["Cache-Control"] = "no-cache"
+
+        return response
 
     @app.get("/view/<owner>/<repo>/runs/<int:run_id>/artifacts/<name>")
     @app.get("/view/<owner>/<repo>/runs/<int:run_id>/artifacts/<name>/")
@@ -265,7 +314,7 @@ def create_app() -> Quart:
 
         return redirect(
             url_for(
-                "view_by_artifact_id",
+                "view",
                 owner=owner,
                 repo=repo,
                 artifact_id=artifact_id,

@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>{% block title %}{% endblock %}</title>
+	<link rel="stylesheet" href="{{ url_for('static', filename='bulma.min.css') }}">
+	<script src="{{ url_for('static', filename='htmx.min.js') }}"></script>
+</head>
+<body>
+	<div class="container is-max-desktop">
+		<div class="box m-5" id="content">
+		{% block content %}{% endblock %}
+		</div>
+	</div>
+</body>

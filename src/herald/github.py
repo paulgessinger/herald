@@ -125,12 +125,55 @@ class ArtifactCache:
             logger.info("Culled %d items, %d bytes", num_deleted, deleted_bytes)
 
 
-class ArtifactExpired(RuntimeError):
-    pass
+class ArtifactError(RuntimeError):
+    artifact_id: int
+    repo: str
+
+    def __init__(self, message: str, artifact_id: int, repo: str) -> None:
+        super().__init__(message)
+        self.artifact_id = artifact_id
+        self.repo = repo
 
 
-class ArtifactTooLarge(RuntimeError):
-    pass
+class ArtifactExpired(ArtifactError):
+    def __init__(self, artifact_id: int, *args, **kwargs) -> None:
+        super().__init__(
+            f"Artifact #{artifact_id} expired", artifact_id, *args, **kwargs
+        )
+
+
+class ArtifactNotFound(ArtifactError):
+    def __init__(self, artifact_id: int, *args, **kwargs) -> None:
+        super().__init__(
+            f"Artifact #{artifact_id} was not found", artifact_id, *args, **kwargs
+        )
+
+
+class ArtifactTooLarge(ArtifactError):
+    size: int
+
+    def __init__(self, artifact_id: int, size: int, *args, **kwargs) -> None:
+        super().__init__(
+            f"Artifact #{artifact_id} is too large ({size})",
+            artifact_id,
+            *args,
+            **kwargs,
+        )
+        self.size = size
+
+
+class ArtifactFileNotFound(ArtifactError):
+    artifact_id: int
+    file_name: str
+
+    def __init__(self, artifact_id: int, file_name: str, *args, **kwargs) -> None:
+        self.file_name = file_name
+        super().__init__(
+            f"File {file_name} not found in artifact #{artifact_id}",
+            artifact_id,
+            *args,
+            **kwargs,
+        )
 
 
 class GitHub:
@@ -155,14 +198,12 @@ class GitHub:
         data = r.json()
         if data["expired"]:
             logger.info("Artifact %d has expired", artifact_id)
-            raise ArtifactExpired(f"Artifact {artifact_id} has expired")
+            raise ArtifactExpired(artifact_id, repo=repo)
         artifact_size.observe(data["size_in_bytes"])
         if data["size_in_bytes"] > config.MAX_ARTIFACT_SIZE:
             logger.warning("Artifact %d is too large, refusing download", artifact_id)
             artifact_size_rejected.inc()
-            raise ArtifactTooLarge(
-                f"Artifact {artifact_id} is too large ({data['size_in_bytes']})"
-            )
+            raise ArtifactTooLarge(artifact_id, data["size_in_bytes"], repo=repo)
 
         github_api_call_count.labels(type="artifact_download").inc()
         r = requests.get(
@@ -172,7 +213,10 @@ class GitHub:
 
         if r.status_code == 410:
             logger.info("Artifact %d has expired", artifact_id)
-            raise ArtifactExpired(f"Artifact {artifact_id} has expired")
+            raise ArtifactExpired(artifact_id, repo=repo)
+        if r.status_code == 404:
+            logger.info("Artifact %d has does not exist", artifact_id)
+            raise ArtifactNotFound(artifact_id, repo=repo)
         try:
             r.raise_for_status()
         except Exception as e:
@@ -277,6 +321,13 @@ class GitHub:
                         mime = "text/html"
                         self._cache.set(key, (zstd.compress(content), mime))
                         return io.BytesIO(content), mime
+
+                    if not z.exists(p):
+                        raise ArtifactFileNotFound(
+                            artifact_id,
+                            file_name=path,
+                            repo=repo,
+                        )
 
                     with z.open(p, "rb") as zfh:
                         mime, _ = mimetypes.guess_type(path)

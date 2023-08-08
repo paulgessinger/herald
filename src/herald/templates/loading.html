@@ -1,12 +1,15 @@
-<!DOCTYPE html>
-<html>
-<head>
-	<title>Loading: {{file}}</title>
-	<link rel="stylesheet" href="{{ url_for('static', filename='bulma.min.css') }}">
-</head>
-<body>
-	<div class="container is-max-desktop">
-		<div class="box m-5" id="content">
+{% extends "base.html" %}
+
+{% block title -%}
+Loading {{file}} from {{owner}}/{{repo}} artifact #{{artifact_id}}
+{%- endblock %}
+
+{% block content %}
+			<div
+			hx-get="{{ url_for('view', owner=owner, repo=repo, artifact_id=artifact_id, file=file) }}"
+			hx-trigger="load"
+	 		hx-swap="innerHTML"
+			>
 			<div class="level">
 				<div class="level-left">
 					<div class="level-item">
@@ -16,7 +19,7 @@
 							{% if file %}
 							<strong>{{file}}</strong> from 
 							{% endif %}
-							<strong>{{repo}}</strong> artifact <strong>#{{artifact_id}}</strong>
+							<strong>{{owner}}/{{repo}}</strong> artifact <strong>#{{artifact_id}}</strong>
 						</div>
 					</div>
 				</div>
@@ -26,7 +29,5 @@
 						<img src="{{ url_for('static', filename='spinner.svg') }}" alt="Loading" />
 					</div>
 				</div>
-
 			</div>
-		</div>
-</body>
+	{% endblock %}
