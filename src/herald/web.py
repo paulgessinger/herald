@@ -96,8 +96,8 @@ def create_app() -> Quart:
 
     gh = github.GitHub()
 
-    if app.debug:
-        logger.setLevel(logging.DEBUG)
+    #  if app.debug:
+    logger.setLevel(logging.DEBUG)
 
     @app.before_request
     async def on_request():

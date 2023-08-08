@@ -146,7 +146,7 @@ class GitHub:
 
     def _download_artifact(self, repo: str, artifact_id: int) -> bytes:
         logger.info("Downloading artifact %d from GitHub", artifact_id)
-        github_api_call_count.labels(type="artifact_download").inc()
+        github_api_call_count.labels(type="artifact_info").inc()
         r = requests.get(
             f"https://api.github.com/repos/{repo}/actions/artifacts/{artifact_id}",
             headers={"Authorization": f"Bearer {config.GH_TOKEN}"},
