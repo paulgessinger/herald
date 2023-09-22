@@ -62,10 +62,12 @@ class ArtifactNotFound(Exception):
 
 
 @alru_cache(maxsize=1024)
-async def find_artifact_id(owner: str, repo: str, run_id: int, name: str) -> int | None:
+async def find_artifact_id(
+    token: str, owner: str, repo: str, run_id: int, name: str
+) -> int | None:
     logger.debug("Checking GH api for artifact named %s for run #%d", name, run_id)
     async with aiohttp.ClientSession() as session:
-        gh = GitHukbAPI(session, "herald", oauth_token=config.GH_TOKEN)
+        gh = GitHubAPI(session, "herald", oauth_token=token)
 
         url = f"/repos/{owner}/{repo}/actions/runs/{run_id}/artifacts"
 
@@ -340,9 +342,15 @@ def create_app() -> Quart:
 
         to_png = request.args.get("to_png", type=bool, default=False)
 
+        installation_access_token = await get_installation_access_token(
+            f"{owner}/{repo}"
+        )
+
         artifact_id = None
         try:
-            artifact_id = await find_artifact_id(owner, repo, run_id, name)
+            artifact_id = await find_artifact_id(
+                installation_access_token, owner, repo, run_id, name
+            )
         except ArtifactNotFound:
             # Not found and run not complete, so don't cache it
             pass
