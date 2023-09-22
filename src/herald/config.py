@@ -35,7 +35,8 @@ CACHE_SIZE: int = int(get("CACHE_SIZE", 512 * 1024 * 1024))
 CACHE_EVICTION_STRATEGY: str = get("CACHE_EVICTION_STRATEGY", "least-recently-stored")
 ARTIFACT_CACHE_SIZE: int = int(get("ARTIFACT_CACHE_SIZE", 512 * 1024 * 1024))
 
-GH_TOKEN: str = required("GH_TOKEN")
+GH_PRIVATE_KEY: str = required("GH_PRIVATE_KEY")
+GH_APP_ID: str = required("GH_APP_ID")
 
 ENABLE_LOADING_PAGE: bool = get("ENABLE_LOADING_PAGE", "True") != "False"
 

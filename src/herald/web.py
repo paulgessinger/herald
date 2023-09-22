@@ -1,5 +1,5 @@
 import asyncio
-from datetime import timedelta
+from datetime import timedelta, datetime, timezone
 import json
 import logging
 from typing import IO, Tuple
@@ -20,6 +20,7 @@ from prometheus_client import core
 from prometheus_client.exposition import generate_latest
 import aiohttp
 from gidgethub.aiohttp import GitHubAPI
+import gidgethub.apps
 import fs.errors
 from quart_rate_limiter import RateLimiter, rate_limit
 from async_lru import alru_cache
@@ -64,7 +65,7 @@ class ArtifactNotFound(Exception):
 async def find_artifact_id(owner: str, repo: str, run_id: int, name: str) -> int | None:
     logger.debug("Checking GH api for artifact named %s for run #%d", name, run_id)
     async with aiohttp.ClientSession() as session:
-        gh = GitHubAPI(session, "herald", oauth_token=config.GH_TOKEN)
+        gh = GitHukbAPI(session, "herald", oauth_token=config.GH_TOKEN)
 
         url = f"/repos/{owner}/{repo}/actions/runs/{run_id}/artifacts"
 
@@ -93,11 +94,46 @@ def create_app() -> Quart:
     RateLimiter(app)
 
     artifact_expired = LRUDict(1024)
+    installation_tokens: Dict[str, github.InstallationToken] = {}
 
     gh = github.GitHub()
 
     #  if app.debug:
     logger.setLevel(logging.DEBUG)
+
+    async def get_installation_access_token(repo: str) -> str:
+        if repo in installation_tokens:
+            logger.debug("Have cached installation token for repo %s", repo)
+            if installation_tokens[repo].expires_at > (
+                datetime.now(timezone.utc) + timedelta(minutes=5)
+            ):
+                logger.debug("Have cached token and it is still valid")
+                return installation_tokens[repo].token
+            else:
+                logger.debug("Have cached token but it has expired")
+                del installation_tokens[repo]
+
+        logger.debug("Getting installation token for repo %s", repo)
+
+        jwt = gidgethub.apps.get_jwt(
+            app_id=config.GH_APP_ID, private_key=config.GH_PRIVATE_KEY
+        )
+        async with aiohttp.ClientSession() as session:
+            gh = GitHubAPI(session, "herald")
+            installation = await gh.getitem(f"/repos/{repo}/installation", jwt=jwt)
+            installation_id = installation["id"]
+
+            response = github.InstallationToken(
+                **await gidgethub.apps.get_installation_access_token(
+                    gh,
+                    app_id=config.GH_APP_ID,
+                    installation_id=installation_id,
+                    private_key=config.GH_PRIVATE_KEY,
+                )
+            )
+
+        installation_tokens[repo] = response
+        return response.token
 
     @app.errorhandler(github.ArtifactError)
     async def artifact_error_handler(e):
@@ -174,9 +210,17 @@ def create_app() -> Quart:
                 to_png,
             )
 
+            installation_access_token = await get_installation_access_token(
+                f"{owner}/{repo}"
+            )
+
             async def async_get_file() -> Tuple[IO[bytes], str]:
                 return await run_sync(gh.get_file)(
-                    f"{owner}/{repo}", artifact_id, file, to_png=to_png
+                    installation_access_token,
+                    f"{owner}/{repo}",
+                    artifact_id,
+                    file,
+                    to_png=to_png,
                 )
 
             @stream_with_context

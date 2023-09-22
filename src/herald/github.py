@@ -8,6 +8,8 @@ import mimetypes
 import tempfile
 import os
 import hashlib
+import pydantic
+import datetime
 
 import diskcache
 from quart import render_template
@@ -28,6 +30,11 @@ from .metric import (
     artifact_size,
     artifact_size_rejected,
 )
+
+
+class InstallationToken(pydantic.BaseModel):
+    token: str
+    expires_at: datetime.datetime
 
 
 class ArtifactCache:
@@ -187,12 +194,12 @@ class GitHub:
             path=config.ARTIFACT_CACHE_LOCATION, cache_size=config.ARTIFACT_CACHE_SIZE
         )
 
-    def _download_artifact(self, repo: str, artifact_id: int) -> bytes:
+    def _download_artifact(self, token: str, repo: str, artifact_id: int) -> bytes:
         logger.info("Downloading artifact %d from GitHub", artifact_id)
         github_api_call_count.labels(type="artifact_info").inc()
         r = requests.get(
             f"https://api.github.com/repos/{repo}/actions/artifacts/{artifact_id}",
-            headers={"Authorization": f"Bearer {config.GH_TOKEN}"},
+            headers={"Authorization": f"Bearer {token}"},
         )
         r.raise_for_status()
         data = r.json()
@@ -208,7 +215,7 @@ class GitHub:
         github_api_call_count.labels(type="artifact_download").inc()
         r = requests.get(
             f"https://api.github.com/repos/{repo}/actions/artifacts/{artifact_id}/zip",
-            headers={"Authorization": f"Bearer {config.GH_TOKEN}"},
+            headers={"Authorization": f"Bearer {token}"},
         )
 
         if r.status_code == 410:
@@ -228,7 +235,7 @@ class GitHub:
         return r.content
 
     @contextlib.contextmanager
-    def get_artifact(self, repo: str, artifact_id: int):
+    def get_artifact(self, token: str, repo: str, artifact_id: int):
         key = self._get_artifact_key(repo, artifact_id)
         if key in self._artifact_cache:
             logger.info("Cache hit on key %s", key)
@@ -256,7 +263,7 @@ class GitHub:
                     logger.info("Culling artifact cache")
                     self._artifact_cache.cull()
                     logger.info("Cull complete")
-                    buffer = self._download_artifact(repo, artifact_id)
+                    buffer = self._download_artifact(token, repo, artifact_id)
                     logger.info(
                         "Have buffer of size %d for artifact %d, writing to key %s",
                         len(buffer),
@@ -304,7 +311,13 @@ class GitHub:
         return key in self._artifact_cache
 
     def get_file(
-        self, repo: str, artifact_id: int, path: str, to_png: bool, retry: bool = True
+        self,
+        token: str,
+        repo: str,
+        artifact_id: int,
+        path: str,
+        to_png: bool,
+        retry: bool = True,
     ) -> Tuple[IO[bytes], str]:
         key = self._get_file_key(repo, artifact_id, path, to_png)
 
@@ -313,7 +326,7 @@ class GitHub:
                 logger.info("Cache miss on key %s", key)
                 cache_misses.labels(type="file").inc()
 
-            with self.get_artifact(repo, artifact_id) as fh:
+            with self.get_artifact(token, repo, artifact_id) as fh:
                 with fs.zipfs.ReadZipFS(fh) as z:
                     p = path + "/" if not path.endswith("/") and path != "" else path
                     if path == "" or (z.exists(p) and z.isdir(p)):
