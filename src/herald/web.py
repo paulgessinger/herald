@@ -282,15 +282,15 @@ def create_app() -> Quart:
         #  abort(404)
 
     @app.route("/poll/<owner>/<repo>/<int:artifact_id>")
-    @app.route("/view/<owner>/<repo>/<int:artifact_id>/<path:file>")
-    async def view_poll(owner: str, repo: str, artifact_id: int, path: str = ""):
+    @app.route("/poll/<owner>/<repo>/<int:artifact_id>/<path:file>")
+    async def view_poll(owner: str, repo: str, artifact_id: int, file: str = ""):
         is_cached = gh.is_artifact_cached(f"{owner}/{repo}", artifact_id)
         logger.debug(
             "Polling for %s/%s #%d => %s, is cached: %s",
             owner,
             repo,
             artifact_id,
-            path,
+            file,
             is_cached,
         )
 
@@ -304,11 +304,13 @@ def create_app() -> Quart:
                         owner=owner,
                         repo=repo,
                         artifact_id=artifact_id,
-                        file=path,
+                        file=file,
                     )
                 },
             )
-        poll_url = url_for("view_poll", owner=owner, repo=repo, artifact_id=artifact_id)
+        poll_url = url_for(
+            "view_poll", owner=owner, repo=repo, artifact_id=artifact_id, file=file
+        )
 
         return f"""
             <div hx-get="{poll_url}" hx-trigger="load delay:2s" hx-swap="outerHTML" style="display:none;"></div>

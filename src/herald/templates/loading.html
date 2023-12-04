@@ -25,7 +25,7 @@ Loading {{file}} from {{owner}}/{{repo}} artifact #{{artifact_id}}
 					</div>
 				</div>
 
-			<div hx-get="{{ url_for('view_poll', owner=owner, repo=repo, artifact_id=artifact_id) }}"
+			<div hx-get="{{ url_for('view_poll', owner=owner, repo=repo, artifact_id=artifact_id, file=file) }}"
 					hx-trigger="load"
 					hx-swap="outerHTML" style="display:none;">
 			</div>
