@@ -61,7 +61,7 @@ jobs:
     env:
       SERVER: https://api.paas.okd.cern.ch
       PROJECT: acts-herald
-      APP_NAME: acts-herald
+      APP_NAME: herald
     steps:
       - name: Trigger redeploy
         run: >
