@@ -45,5 +45,11 @@ artifact_size_rejected = Counter(
     "How often an artifact was rejected due to size",
 )
 
+artifact_download_time = Histogram(
+    "herald_artifact_download_time_seconds",
+    "Download time of artifacts",
+    buckets=[0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 20, 25, 30, 60, 120],
+)
+
 cache_size_max.labels("file").set(config.CACHE_SIZE)
 cache_size_max.labels("artifact").set(config.ARTIFACT_CACHE_SIZE)

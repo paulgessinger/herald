@@ -29,6 +29,7 @@ from .metric import (
     github_api_call_count,
     artifact_size,
     artifact_size_rejected,
+    artifact_download_time,
 )
 
 
@@ -194,6 +195,7 @@ class GitHub:
             path=config.ARTIFACT_CACHE_LOCATION, cache_size=config.ARTIFACT_CACHE_SIZE
         )
 
+    @artifact_download_time.time()
     def _download_artifact(self, token: str, repo: str, artifact_id: int) -> bytes:
         logger.info("Downloading artifact %d from GitHub", artifact_id)
         github_api_call_count.labels(type="artifact_info").inc()
