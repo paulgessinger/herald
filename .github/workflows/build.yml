@@ -53,20 +53,20 @@ jobs:
           cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner  }}/herald:buildcache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner  }}/herald:buildcache,mode=max
 
-  # deploy:
-    # runs-on: ubuntu-latest
-    # if: github.ref == 'refs/heads/main'
-    # needs:
-      # - build
-    # env:
-      # SERVER: https://api.paas.okd.cern.ch
-      # PROJECT: herald
-      # APP_NAME: herald
-    # steps:
-      # - name: Trigger redeploy
-        # run: >
-          # which sshpass
-          # && sshpass -p ${{ secrets.PWD }} ssh -o StrictHostKeyChecking=no ${{ secrets.USER }}@lxplus9.cern.ch 
-          # 'oc login ${{ env.SERVER }} --token=${{ secrets.DEPLOY_TOKEN }}
-          # && oc project ${{ env.PROJECT }}
-          # && oc import-image ${{ env.APP_NAME }} --all'
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs:
+      - build
+    env:
+      SERVER: https://api.paas.okd.cern.ch
+      PROJECT: herald
+      APP_NAME: herald
+    steps:
+      - name: Trigger redeploy
+        run: >
+          which sshpass
+          && sshpass -p ${{ secrets.PWD }} ssh -o StrictHostKeyChecking=no ${{ secrets.USER }}@lxplus9.cern.ch 
+          'oc login ${{ env.SERVER }} --token=${{ secrets.DEPLOY_TOKEN }}
+          && oc project ${{ env.PROJECT }}
+          && oc import-image ${{ env.APP_NAME }} --all'
