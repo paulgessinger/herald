@@ -225,41 +225,9 @@ def create_app() -> Quart:
                     to_png=to_png,
                 )
 
-            @stream_with_context
-            async def reload_response():
-                yield await render_template(
-                    "loading.html",
-                    file=file,
-                    repo=f"{owner}/{repo}",
-                    artifact_id=artifact_id,
-                )
-                try:
-                    await async_get_file()
-                except Exception as e:
-                    details: str | None = None
-                    if isinstance(e, github.ArtifactExpired):
-                        details = f"Artifact #{artifact_id} has expired on GitHub"
-                        artifact_expired[artifact_id] = True
-                    if isinstance(e, github.ArtifactTooLarge):
-                        details = f"Artifact #{artifact_id} is too large to download"
-                    elif isinstance(e, fs.errors.ResourceNotFound):
-                        details = f"File {file} not found in artifact"
+            is_cached = gh.is_artifact_cached(f"{owner}/{repo}", artifact_id)
 
-                    message = json.dumps(
-                        await render_template(
-                            "error.html",
-                            file=file,
-                            repo=f"{owner}/{repo}",
-                            artifact_id=artifact_id,
-                            details=details,
-                        )
-                    )
-                    yield f"""
-                        <script>
-                        document.getElementById("content").innerHTML = {message}
-                        </script>"""
-                    return
-                yield "<script>" + "window.location.reload()" + "</script>"
+            is_htmx = "HX-Request" in request.headers
 
             # Assumption: curl etc will `Accept` *anything*
             is_browser: bool = request.headers.get("Accept", "*/*") != "*/*"
@@ -268,11 +236,7 @@ def create_app() -> Quart:
                     "We think this is a browser request based on Accept header %s",
                     request.headers.get("Accept"),
                 )
-            if (
-                gh.is_artifact_cached(f"{owner}/{repo}", artifact_id)
-                or not is_browser
-                or not config.ENABLE_LOADING_PAGE
-            ):
+            if is_cached or not is_browser or not config.ENABLE_LOADING_PAGE:
                 logger.debug("File is cached, call and return immediately")
                 buf, mime = await async_get_file()
                 response = await make_response(buf.read())
@@ -280,11 +244,15 @@ def create_app() -> Quart:
                 response.headers["Cache-Control"] = "max-age=31536000"
                 response.headers["Etag"] = exp_etag
 
-                if "HX-Request" in request.headers:
-                    response.headers["HX-Redirect"] = request.url
+                response.headers["HX-Redirect"] = request.url
+                response.headers["HX-Redirect"] = request.url
 
             else:
                 logger.debug("File is not cached")
+
+                if is_browser:
+                    logger.debug("Starting artifact download in the background")
+                    app.add_background_task(async_get_file)
 
                 return redirect(
                     url_for(
@@ -312,6 +280,39 @@ def create_app() -> Quart:
             abort(404)
         #  except fs.errors.ResourceNotFound:
         #  abort(404)
+
+    @app.route("/poll/<owner>/<repo>/<int:artifact_id>")
+    @app.route("/view/<owner>/<repo>/<int:artifact_id>/<path:file>")
+    async def view_poll(owner: str, repo: str, artifact_id: int, path: str = ""):
+        is_cached = gh.is_artifact_cached(f"{owner}/{repo}", artifact_id)
+        logger.debug(
+            "Polling for %s/%s #%d => %s, is cached: %s",
+            owner,
+            repo,
+            artifact_id,
+            path,
+            is_cached,
+        )
+
+        if is_cached:
+            return (
+                "",
+                200,
+                {
+                    "HX-Redirect": url_for(
+                        "view",
+                        owner=owner,
+                        repo=repo,
+                        artifact_id=artifact_id,
+                        file=path,
+                    )
+                },
+            )
+        poll_url = url_for("view_poll", owner=owner, repo=repo, artifact_id=artifact_id)
+
+        return f"""
+            <div hx-get="{poll_url}" hx-trigger="load delay:2s" hx-swap="outerHTML" style="display:none;"></div>
+            """
 
     @app.route("/loading/<owner>/<repo>/<int:artifact_id>/")
     @app.route("/loading/<owner>/<repo>/<int:artifact_id>/<path:file>")

@@ -5,11 +5,6 @@ Loading {{file}} from {{owner}}/{{repo}} artifact #{{artifact_id}}
 {%- endblock %}
 
 {% block content %}
-			<div
-			hx-get="{{ url_for('view', owner=owner, repo=repo, artifact_id=artifact_id, file=file) }}"
-			hx-trigger="load"
-	 		hx-swap="innerHTML"
-			>
 			<div class="level">
 				<div class="level-left">
 					<div class="level-item">
@@ -29,5 +24,10 @@ Loading {{file}} from {{owner}}/{{repo}} artifact #{{artifact_id}}
 						<img src="{{ url_for('static', filename='spinner.svg') }}" alt="Loading" />
 					</div>
 				</div>
+
+			<div hx-get="{{ url_for('view_poll', owner=owner, repo=repo, artifact_id=artifact_id) }}"
+					hx-trigger="load"
+					hx-swap="outerHTML" style="display:none;">
 			</div>
+
 	{% endblock %}

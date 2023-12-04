@@ -38,7 +38,7 @@ github_api_call_count = Counter(
 artifact_size = Histogram(
     "herald_artifact_size_bytes",
     "Size of artifacts",
-    buckets=[1e6, 1e7, 1e8] + [n*1e8 for n in range(2, 10)] + [1e9] + [float("inf")],
+    buckets=[1e6, 1e7, 1e8] + [n * 1e8 for n in range(2, 10)] + [1e9] + [float("inf")],
 )
 artifact_size_rejected = Counter(
     "herald_artifact_size_rejected_total",
