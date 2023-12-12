@@ -226,6 +226,9 @@ def create_app() -> Quart:
                 )
 
             is_cached = gh.is_artifact_cached(f"{owner}/{repo}", artifact_id)
+            is_file_cached = gh.is_file_cached(
+                f"{owner}/{repo}", artifact_id, file, to_png
+            )
 
             is_htmx = "HX-Request" in request.headers
 
@@ -236,7 +239,12 @@ def create_app() -> Quart:
                     "We think this is a browser request based on Accept header %s",
                     request.headers.get("Accept"),
                 )
-            if is_cached or not is_browser or not config.ENABLE_LOADING_PAGE:
+            if (
+                is_cached
+                or is_file_cached
+                or not is_browser
+                or not config.ENABLE_LOADING_PAGE
+            ):
                 logger.debug("File is cached, call and return immediately")
                 buf, mime = await async_get_file()
                 response = await make_response(buf.read())
