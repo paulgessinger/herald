@@ -13,6 +13,8 @@
 		File <strong>{{ error.file_name }}</strong> from artifact <strong>#{{ error.artifact_id }}</strong> in <strong>{{ error.repo }}</strong> was not found
 		{% elif error_type == "ArtifactNotFound" %}
 		Artifact <strong>#{{ error.artifact_id }}</strong> in <strong>{{ error.repo }}</strong> was not found
+		{% else %}
+		{{ message }}
 		{% endif %}
 	</div>
 </article>

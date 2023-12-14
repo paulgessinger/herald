@@ -5,29 +5,30 @@ Loading {{file}} from {{owner}}/{{repo}} artifact #{{artifact_id}}
 {%- endblock %}
 
 {% block content %}
-			<div class="level">
-				<div class="level-left">
-					<div class="level-item">
-						<div class="content">
+<div class="level">
+	<div class="level-left">
+		<div class="level-item">
+			<div class="content">
 
-							Loading 
-							{% if file %}
-							<strong>{{file}}</strong> from 
-							{% endif %}
-							<strong>{{owner}}/{{repo}}</strong> artifact <strong>#{{artifact_id}}</strong>
-						</div>
-					</div>
-				</div>
-
-				<div class="level-right">
-					<div class="level-item">
-						<img src="{{ url_for('static', filename='spinner.svg') }}" alt="Loading" />
-					</div>
-				</div>
-
-			<div hx-get="{{ url_for('view_poll', owner=owner, repo=repo, artifact_id=artifact_id, file=file) }}"
-					hx-trigger="load"
-					hx-swap="outerHTML" style="display:none;">
+				Loading 
+				{% if file %}
+				<strong>{{file}}</strong> from 
+				{% endif %}
+				<strong>{{owner}}/{{repo}}</strong> artifact <strong>#{{artifact_id}}</strong>
 			</div>
+		</div>
+	</div>
+
+	<div class="level-right">
+		<div class="level-item">
+			<img src="{{ url_for('static', filename='spinner.svg') }}" alt="Loading" />
+		</div>
+	</div>
+</div>
+
+	<div hx-get="{{ url_for('view_poll', owner=owner, repo=repo, artifact_id=artifact_id, file=file) }}"
+			hx-trigger="load"
+	 hx-swap="outerHTML" style="display:none;">
+	</div>
 
 	{% endblock %}

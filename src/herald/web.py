@@ -292,6 +292,21 @@ def create_app() -> Quart:
     @app.route("/poll/<owner>/<repo>/<int:artifact_id>")
     @app.route("/poll/<owner>/<repo>/<int:artifact_id>/<path:file>")
     async def view_poll(owner: str, repo: str, artifact_id: int, file: str = ""):
+        n = request.args.get("n", type=int, default=0)
+
+        if n > config.POLL_LOAD_LIMIT:
+            response = await make_response(
+                await render_template(
+                    "error_fragment.html",
+                    error_type="Poll limit exceeded",
+                    message="An error occurred downloading the artifact",
+                )
+            )
+            #  response.headers["HX-Retarget"] = "#loading-frame"
+            return response
+
+        n += 1
+
         is_cached = gh.is_artifact_cached(f"{owner}/{repo}", artifact_id)
         logger.debug(
             "Polling for %s/%s #%d => %s, is cached: %s",
@@ -317,7 +332,7 @@ def create_app() -> Quart:
                 },
             )
         poll_url = url_for(
-            "view_poll", owner=owner, repo=repo, artifact_id=artifact_id, file=file
+            "view_poll", owner=owner, repo=repo, artifact_id=artifact_id, file=file, n=n
         )
 
         return f"""
