@@ -7,25 +7,26 @@ import io
 import mimetypes
 import tempfile
 import os
-import hashlib
 import pydantic
 import datetime
 
 import diskcache
 from quart import render_template
 import requests
-import zstd
+import zstandard
 import pdf2image
 import fs.zipfs
-import filelock
+import fs.tarfs
+import zipfile
+import tarfile
 
 from . import config
+from .artifact_cache import ArtifactCache
 from .logger import logger
 from .metric import (
     cache_hits,
     cache_misses,
     cache_read_errors,
-    cache_cull_total,
     github_api_call_count,
     artifact_size,
     artifact_size_rejected,
@@ -36,101 +37,6 @@ from .metric import (
 class InstallationToken(pydantic.BaseModel):
     token: str
     expires_at: datetime.datetime
-
-
-class ArtifactCache:
-    def __init__(self, path: Path, cache_size: int):
-        self.path = path
-        self.cache_limit = cache_size
-
-        self.path.mkdir(parents=True, exist_ok=True)
-
-    @staticmethod
-    def safe_key(key: str) -> str:
-        return hashlib.sha256(key.encode("utf-8")).hexdigest()
-
-    @contextlib.contextmanager
-    def key_lock(self, key: str):
-        with filelock.FileLock(self.path / (key + ".lock"), timeout=10):
-            yield
-
-    def __contains__(self, key: str) -> bool:
-        safe_key = self.safe_key(key)
-        test_path = self.path / safe_key
-        #  with self.key_lock(safe_key):
-        return test_path.exists()
-
-    def __getitem__(self, key: str) -> bytes:
-        safe_key = self.safe_key(key)
-        path = self.path / safe_key
-        with self.key_lock(safe_key):
-            if not path.exists():
-                raise KeyError()
-            path.touch()
-            return path.read_bytes()
-
-    @contextlib.contextmanager
-    def open(self, key: str):
-        safe_key = self.safe_key(key)
-        with self.key_lock(safe_key):
-            path = self.path / safe_key
-            if not path.exists():
-                raise KeyError()
-            buf = io.BytesIO(path.read_bytes())
-        yield buf
-
-    def set(self, key: str, value: bytes) -> None:
-        safe_key = self.safe_key(key)
-        path = self.path / safe_key
-        with self.key_lock(safe_key):
-            path.write_bytes(value)
-
-    def total_size(self) -> int:
-        result = 0
-        for file in self.path.iterdir():
-            if file.suffix == ".lock":
-                continue
-            result += file.stat().st_size
-        return result
-
-    def __len__(self) -> int:
-        result = 0
-        for file in self.path.iterdir():
-            if file.suffix == ".lock":
-                continue
-            result += 1
-        return result
-
-    def cull(self) -> None:
-        with filelock.FileLock(self.path / "cull.lock", timeout=30):
-            size = self.total_size()
-            logger.info(
-                "Culling artifact cache: size=%d, max size=%d", size, self.cache_limit
-            )
-            deleted_bytes = 0
-            num_deleted = 0
-            if size > self.cache_limit:
-                items = list(self.path.iterdir())
-                for item in sorted(items, key=lambda i: i.stat().st_mtime):
-                    if item.name == "cull.lock":
-                        # don't delete our current lock
-                        continue
-                    if item.suffix == ".lock":
-                        actual_item = item.parent / item.stem
-                        if not actual_item.exists() and item.exists():
-                            item.unlink()  # delete lock if source file is gone
-                        continue
-                    num_deleted += 1
-                    deleted_bytes += item.stat().st_size
-                    size -= item.stat().st_size
-                    item.unlink()
-                    item_lock = item.parent / (item.name + ".lock")
-                    if item_lock.exists():
-                        item_lock.unlink()
-                    if size <= self.cache_limit:
-                        break
-            cache_cull_total.inc(num_deleted)
-            logger.info("Culled %d items, %d bytes", num_deleted, deleted_bytes)
 
 
 class ArtifactError(RuntimeError):
@@ -234,6 +140,7 @@ class GitHub:
             )
             raise e
         logger.info("Download of artifact %d complete", artifact_id)
+        # @TODO: stream to temporary file
         return r.content
 
     @contextlib.contextmanager
@@ -244,7 +151,6 @@ class GitHub:
             cache_hits.labels(type="artifact").inc()
             with self._artifact_cache.open(key) as fh:
                 yield fh
-            #  return self._artifact_cache[key]
 
         else:
             logger.info("Cache miss on key %s", key)
@@ -272,18 +178,47 @@ class GitHub:
                         artifact_id,
                         key,
                     )
-                    r = self._artifact_cache.set(key, buffer)
-                    logger.info(
-                        "Cache reports key %s created for artifact %d",
-                        key,
-                        artifact_id,
-                    )
-                    if key not in self._artifact_cache:
-                        logger.error(
-                            "Key %s did not get set!",
+                    # buffer is zip, let's make a tarball out of it
+                    with tempfile.TemporaryDirectory() as tmpd:
+                        z = zipfile.ZipFile(io.BytesIO(buffer))
+                        z.extractall(tmpd)
+
+                        import shutil
+
+                        d = Path.cwd() / "tmp"
+                        dt = Path.cwd() / "tmp.tar"
+                        dt.unlink(missing_ok=True)
+
+                        shutil.rmtree(d, ignore_errors=True)
+                        shutil.copytree(tmpd, d)
+
+                        with tempfile.NamedTemporaryFile(
+                            "wb+"
+                        ) as tar_fh, tempfile.TemporaryFile("wb") as zstd_fh:
+                            t = tarfile.TarFile(fileobj=tar_fh, mode="w")
+                            t.add(tmpd, arcname=".", recursive=True)
+                            t.close()
+
+                            tar_fh.flush()
+                            tar_fh.seek(0)
+
+                            shutil.copyfile(tar_fh.name, dt)
+                            compressor = zstandard.ZstdCompressor()
+                            buf = io.BytesIO()
+                            compressor.copy_stream(tar_fh, buf)
+                            self._artifact_cache.set(key, buf.getvalue())
+
+                        logger.info(
+                            "Cache reports key %s created for artifact %d",
                             key,
+                            artifact_id,
                         )
-                        raise RuntimeError("Key not written to cache")
+                        if key not in self._artifact_cache:
+                            logger.error(
+                                "Key %s did not get set!",
+                                key,
+                            )
+                            raise RuntimeError("Key not written to cache")
 
             #  return self._artifact_cache[key]
             with self._artifact_cache.open(key) as fh:
@@ -322,29 +257,36 @@ class GitHub:
         retry: bool = True,
     ) -> Tuple[IO[bytes], str]:
         key = self._get_file_key(repo, artifact_id, path, to_png)
+        compressor = zstandard.ZstdCompressor()
 
         if not config.FILE_CACHE or key not in self._cache:
             if config.FILE_CACHE:
                 logger.info("Cache miss on key %s", key)
                 cache_misses.labels(type="file").inc()
 
-            with self.get_artifact(token, repo, artifact_id) as fh:
-                with fs.zipfs.ReadZipFS(fh) as z:
+            with tempfile.TemporaryFile("wb+") as tar_fh:
+                with self.get_artifact(token, repo, artifact_id) as fh:
+                    decompressor = zstandard.ZstdDecompressor()
+                    decompressor.copy_stream(fh, tar_fh)
+                tar_fh.flush()
+                tar_fh.seek(0)
+
+                with fs.tarfs.TarFS(tar_fh) as tar:
                     p = path + "/" if not path.endswith("/") and path != "" else path
-                    if path == "" or (z.exists(p) and z.isdir(p)):
-                        content = self._generate_dir_listing(z, p, path).encode()
+                    if path == "" or (tar.exists(p) and tar.isdir(p)):
+                        content = self._generate_dir_listing(tar, p, path).encode()
                         mime = "text/html"
-                        self._cache.set(key, (zstd.compress(content), mime))
+                        self._cache.set(key, (compressor.compress(content), mime))
                         return io.BytesIO(content), mime
 
-                    if not z.exists(p):
+                    if not tar.exists(p):
                         raise ArtifactFileNotFound(
                             artifact_id,
                             file_name=path,
                             repo=repo,
                         )
 
-                    with z.open(p, "rb") as zfh:
+                    with tar.open(p, "rb") as zfh:
                         mime, _ = mimetypes.guess_type(path)
                         if to_png:
                             if mime != "application/pdf":
@@ -379,17 +321,23 @@ class GitHub:
 
                                 self._cache.set(
                                     key,
-                                    (zstd.compress(png_file.read_bytes()), "image/png"),
+                                    (
+                                        compressor.compress(png_file.read_bytes()),
+                                        "image/png",
+                                    ),
                                 )
                         else:
-                            self._cache.set(key, (zstd.compress(zfh.read()), mime))
+                            self._cache.set(
+                                key, (compressor.compress(zfh.read()), mime)
+                            )
         else:
             cache_hits.labels(type="file").inc()
             logger.info("Cache hit on key %s", key)
 
         try:
             content, mime = self._cache.get(key)
-            return io.BytesIO(zstd.decompress(content)), mime
+            decompressor = zstandard.ZstdDecompressor()
+            return io.BytesIO(decompressor.decompress(content)), mime
 
         except Exception as e:
             if retry:

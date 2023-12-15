@@ -290,6 +290,7 @@ def create_app() -> Quart:
         #  abort(404)
 
     @app.route("/poll/<owner>/<repo>/<int:artifact_id>")
+    @app.route("/poll/<owner>/<repo>/<int:artifact_id>/")
     @app.route("/poll/<owner>/<repo>/<int:artifact_id>/<path:file>")
     async def view_poll(owner: str, repo: str, artifact_id: int, file: str = ""):
         n = request.args.get("n", type=int, default=0)
