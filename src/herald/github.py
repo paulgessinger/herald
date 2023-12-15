@@ -183,18 +183,7 @@ class GitHub:
                         z = zipfile.ZipFile(io.BytesIO(buffer))
                         z.extractall(tmpd)
 
-                        import shutil
-
-                        d = Path.cwd() / "tmp"
-                        dt = Path.cwd() / "tmp.tar"
-                        dt.unlink(missing_ok=True)
-
-                        shutil.rmtree(d, ignore_errors=True)
-                        shutil.copytree(tmpd, d)
-
-                        with tempfile.NamedTemporaryFile(
-                            "wb+"
-                        ) as tar_fh, tempfile.TemporaryFile("wb") as zstd_fh:
+                        with tempfile.NamedTemporaryFile("wb+") as tar_fh:
                             t = tarfile.TarFile(fileobj=tar_fh, mode="w")
                             t.add(tmpd, arcname=".", recursive=True)
                             t.close()
@@ -202,11 +191,9 @@ class GitHub:
                             tar_fh.flush()
                             tar_fh.seek(0)
 
-                            shutil.copyfile(tar_fh.name, dt)
                             compressor = zstandard.ZstdCompressor()
-                            buf = io.BytesIO()
-                            compressor.copy_stream(tar_fh, buf)
-                            self._artifact_cache.set(key, buf.getvalue())
+                            with self._artifact_cache.open(key, "wb") as fh:
+                                compressor.copy_stream(tar_fh, fh)
 
                         logger.info(
                             "Cache reports key %s created for artifact %d",
