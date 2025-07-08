@@ -1,27 +1,24 @@
-import asyncio
 from datetime import timedelta, datetime, timezone
-import json
 import logging
 from typing import IO, Tuple
 
 from quart import (
     Quart,
     abort,
+    Response,
     make_response,
     redirect,
     render_template,
     request,
     url_for,
 )
-from quart.helpers import stream_with_context
 from quart.utils import run_sync
-import requests
 from prometheus_client import core
 from prometheus_client.exposition import generate_latest
 import aiohttp
 from gidgethub.aiohttp import GitHubAPI
 import gidgethub.apps
-import fs.errors
+from quart.wrappers import base
 from quart_rate_limiter import RateLimiter, rate_limit
 from async_lru import alru_cache
 from lru import LRU as LRUDict
@@ -96,7 +93,7 @@ def create_app() -> Quart:
     RateLimiter(app)
 
     artifact_expired = LRUDict(1024)
-    installation_tokens: Dict[str, github.InstallationToken] = {}
+    installation_tokens: dict[str, github.InstallationToken] = {}
 
     gh = github.GitHub()
 
@@ -146,6 +143,7 @@ def create_app() -> Quart:
             tpl = "error.html"
         output = await render_template(tpl, error=e, error_type=e.__class__.__name__)
 
+        status = 400
         if isinstance(e, github.ArtifactExpired):
             status = 410
         elif isinstance(e, github.ArtifactTooLarge):
@@ -229,8 +227,6 @@ def create_app() -> Quart:
             is_file_cached = gh.is_file_cached(
                 f"{owner}/{repo}", artifact_id, file, to_png
             )
-
-            is_htmx = "HX-Request" in request.headers
 
             # Assumption: curl etc will `Accept` *anything*
             is_browser: bool = request.headers.get("Accept", "*/*") != "*/*"
@@ -405,6 +401,22 @@ def create_app() -> Quart:
 
     @app.get("/metrics")
     async def metrics():
+        auth_header = request.headers.get("Authorization")
+        if auth_header is None:
+            response = Response()
+            response.status_code = 401
+            response.headers = {
+                "WWW-Authenticate": 'Basic realm="Metrics", charset="UTF-8"'
+            }
+            return response
+
+        import base64
+
+        user, pwd = base64.b64decode(auth_header.split(" ")[1]).decode().split(":", 1)
+
+        if user != "herald" or pwd != config.METRICS_SECRET:
+            return "", 403
+
         gh = github.GitHub()
 
         cache_size_bytes.labels(type="file").set(gh._cache.volume())

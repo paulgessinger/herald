@@ -1,22 +1,43 @@
-FROM python:3.10-slim-bullseye
-MAINTAINER Paul Gessinger <hello@paulgessinger.com>
+FROM python:3.13-slim AS builder
 
-RUN apt-get update && apt-get install -y poppler-utils && apt-get clean
 
-RUN pip install --no-cache-dir poetry hypercorn
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-ENV APP_PATH /app
-WORKDIR $APP_PATH
+ENV UV_PYTHON=python3.13 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_PROJECT_ENVIRONMENT=/app \
+    UV_LINK_MODE=copy
 
-COPY pyproject.toml /app/pyproject.toml
-COPY poetry.lock /app/poetry.lock
+RUN apt-get update && apt-get install -y build-essential
 
-RUN poetry export -o requirements.txt
+RUN --mount=type=cache,target=/root/.cache \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync \
+    --locked \
+    --no-dev \
+    --no-install-project
 
-RUN pip install --no-cache-dir -r requirements.txt
+COPY . /src
+WORKDIR /src
 
-COPY . /app
+RUN --mount=type=cache,target=/root/.cache \
+    uv sync \
+        --locked \
+        --no-dev \
+        --no-editable
 
-RUN pip install .
+FROM python:3.13-slim
+COPY --from=builder /app /app
 
-CMD ["hypercorn", "-b", ":8080", "asgi:application"]
+ENV USER=ci_relay
+RUN adduser --gecos "" --disabled-password $USER
+
+WORKDIR /app
+
+ENV PATH=/home/$USER/.local/bin:$PATH
+ENV PATH="/app/bin:$PATH"
+
+USER $USER
+CMD ["uvicorn", "herald.web:create_app", "--factory", "--port", "5000", "--host", "0.0.0.0"]

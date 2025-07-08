@@ -10,13 +10,11 @@ T = TypeVar("T")
 
 
 @overload
-def get(k: str) -> str | None:
-    ...
+def get(k: str) -> str | None: ...
 
 
 @overload
-def get(k: str, default: T) -> T | str:
-    ...
+def get(k: str, default: T) -> T | str: ...
 
 
 def get(k: str, default: T = None) -> str | T:
@@ -56,3 +54,5 @@ MAX_ARTIFACT_SIZE: int = int(get("MAX_ARTIFACT_SIZE", 300 * 1024 * 1024))
 
 
 POLL_LOAD_LIMIT = int(get("POLL_LOAD_LIMIT", 60))
+
+METRICS_SECRET = required("METRICS_SECRET")
