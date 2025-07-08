@@ -31,7 +31,7 @@ RUN --mount=type=cache,target=/root/.cache \
 FROM python:3.13-slim
 COPY --from=builder /app /app
 
-ENV USER=ci_relay
+ENV USER=herald
 RUN adduser --gecos "" --disabled-password $USER
 
 WORKDIR /app
@@ -40,4 +40,4 @@ ENV PATH=/home/$USER/.local/bin:$PATH
 ENV PATH="/app/bin:$PATH"
 
 USER $USER
-CMD ["uvicorn", "herald.web:create_app", "--factory", "--port", "5000", "--host", "0.0.0.0"]
+CMD ["uvicorn", "herald.web:create_app", "--factory", "--port", "8080", "--host", "0.0.0.0"]
