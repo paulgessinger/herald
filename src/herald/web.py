@@ -163,7 +163,7 @@ def create_app() -> Quart:
 
     @app.route("/")
     async def index():
-        return "herald"
+        return redirect("https://home.cern")
 
     @app.route("/view/<owner>/<repo>/<int:artifact_id>")
     @app.route("/view/<owner>/<repo>/<int:artifact_id>/")
