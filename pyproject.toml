@@ -27,8 +27,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["black>=22.8.0", "types-Flask>=1.1.6", "hypercorn>=0.15.0"]
 
-[tool.uv]
-dev-dependencies = ["black>=22.8.0", "types-Flask>=1.1.6", "hypercorn>=0.15.0"]
+[dependency-groups]
+dev = ["black>=22.8.0", "types-Flask>=1.1.6", "hypercorn>=0.15.0"]
 
 [build-system]
 requires = ["hatchling"]
