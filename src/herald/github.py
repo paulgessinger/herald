@@ -259,6 +259,8 @@ class GitHub:
                     return io.BytesIO(content), mime
 
                 if not zfs.exists(p):
+                    if config.FILE_CACHE:
+                        self._cache.set(key, None)
                     raise ArtifactFileNotFound(
                         artifact_id,
                         file_name=path,
@@ -312,8 +314,16 @@ class GitHub:
             cache_hits.labels(type="file").inc()
             logger.info("Cache hit on key %s", key)
 
+        cached = self._cache.get(key)
+        if cached is None:
+            raise ArtifactFileNotFound(
+                artifact_id,
+                file_name=path,
+                repo=repo,
+            )
+
         try:
-            content, mime = self._cache.get(key)
+            content, mime = cached
             decompressor = zstandard.ZstdDecompressor()
             return io.BytesIO(decompressor.decompress(content)), mime
 
