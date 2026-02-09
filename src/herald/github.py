@@ -15,8 +15,7 @@ from quart import render_template
 import requests
 import zstandard
 import pdf2image
-import fs.zipfs
-import fs.tarfs
+from fsspec.implementations.tar import TarFileSystem
 import zipfile
 import tarfile
 
@@ -258,72 +257,72 @@ class GitHub:
                 logger.info("Cache miss on key %s", key)
                 cache_misses.labels(type="file").inc()
 
-            with tempfile.TemporaryFile("wb+") as tar_fh:
+            with tempfile.NamedTemporaryFile("wb+") as tar_fh:
                 with self.get_artifact(token, repo, artifact_id) as fh:
                     decompressor = zstandard.ZstdDecompressor()
                     decompressor.copy_stream(fh, tar_fh)
                 tar_fh.flush()
                 tar_fh.seek(0)
 
-                with fs.tarfs.TarFS(tar_fh) as tar:
-                    p = path + "/" if not path.endswith("/") and path != "" else path
-                    if path == "" or (tar.exists(p) and tar.isdir(p)):
-                        content = self._generate_dir_listing(tar, p, path).encode()
-                        mime = "text/html"
-                        self._cache.set(key, (compressor.compress(content), mime))
-                        return io.BytesIO(content), mime
+                tar = TarFileSystem(fo=tar_fh)
+                p = self._tar_path(path)
+                if path == "" or (tar.exists(p) and tar.isdir(p)):
+                    content = self._generate_dir_listing(tar, p, path).encode()
+                    mime = "text/html"
+                    self._cache.set(key, (compressor.compress(content), mime))
+                    return io.BytesIO(content), mime
 
-                    if not tar.exists(p):
-                        raise ArtifactFileNotFound(
-                            artifact_id,
-                            file_name=path,
-                            repo=repo,
-                        )
+                if not tar.exists(p):
+                    raise ArtifactFileNotFound(
+                        artifact_id,
+                        file_name=path,
+                        repo=repo,
+                    )
 
-                    with tar.open(p, "rb") as zfh:
-                        mime, _ = mimetypes.guess_type(path)
-                        if to_png:
-                            if mime != "application/pdf":
-                                raise ValueError(
-                                    "Conversion to png only supported from pdf"
-                                )
-
-                            with (
-                                tempfile.NamedTemporaryFile("wb") as tfh,
-                                tempfile.TemporaryDirectory() as tmpd,
-                            ):
-                                tfh.write(zfh.read())
-                                tfh.flush()
-
-                                info = pdf2image.pdfinfo_from_path(tfh.name)
-                                if info["Pages"] != 1:
-                                    raise ValueError(
-                                        "Unable to convert pdf with >1 pages"
-                                    )
-
-                                png_file = Path(tmpd) / "tmp.png"
-                                #  png_file = Path.cwd() / "tmp.png"
-
-                                pdf2image.convert_from_path(
-                                    tfh.name,
-                                    fmt="png",
-                                    single_file=True,
-                                    output_folder=str(png_file.parent),
-                                    output_file=png_file.stem,
-                                    dpi=config.PNG_DPI,
-                                )
-
-                                self._cache.set(
-                                    key,
-                                    (
-                                        compressor.compress(png_file.read_bytes()),
-                                        "image/png",
-                                    ),
-                                )
-                        else:
-                            self._cache.set(
-                                key, (compressor.compress(zfh.read()), mime)
+                with tar.open(p, "rb") as zfh:
+                    mime, _ = mimetypes.guess_type(path)
+                    if to_png:
+                        if mime != "application/pdf":
+                            raise ValueError(
+                                "Conversion to png only supported from pdf"
                             )
+
+                        with (
+                            tempfile.NamedTemporaryFile("wb") as tfh,
+                            tempfile.TemporaryDirectory() as tmpd,
+                        ):
+                            tfh.write(zfh.read())
+                            tfh.flush()
+
+                            info = pdf2image.pdfinfo_from_path(tfh.name)
+                            if info["Pages"] != 1:
+                                raise ValueError(
+                                    "Unable to convert pdf with >1 pages"
+                                )
+
+                            png_file = Path(tmpd) / "tmp.png"
+                            #  png_file = Path.cwd() / "tmp.png"
+
+                            pdf2image.convert_from_path(
+                                tfh.name,
+                                fmt="png",
+                                single_file=True,
+                                output_folder=str(png_file.parent),
+                                output_file=png_file.stem,
+                                dpi=config.PNG_DPI,
+                            )
+
+                            self._cache.set(
+                                key,
+                                (
+                                    compressor.compress(png_file.read_bytes()),
+                                    "image/png",
+                                ),
+                            )
+                    else:
+                        self._cache.set(
+                            key, (compressor.compress(zfh.read()), mime)
+                        )
         else:
             cache_hits.labels(type="file").inc()
             logger.info("Cache hit on key %s", key)
@@ -351,12 +350,20 @@ class GitHub:
                 )
                 raise e
 
-    def _generate_dir_listing(self, z: fs.zipfs.ZipFS, p: str, url_path: str) -> str:
-        pd = PurePath(p)
+    @staticmethod
+    def _tar_path(path: str) -> str:
+        """Convert a URL path to the corresponding tar member path."""
+        path = path.strip("/")
+        return f"./{path}" if path else "."
+
+    def _generate_dir_listing(
+        self, tar: TarFileSystem, p: str, url_path: str
+    ) -> str:
         items = []
-        for item in z.listdir(p):
-            url = item
-            if z.isdir(str(pd / item)) and not url.endswith("/"):
+        for entry in tar.ls(p, detail=True):
+            name = PurePath(entry["name"]).name
+            url = name
+            if entry["type"] == "directory" and not url.endswith("/"):
                 url += "/"
-            items.append((item, url))
+            items.append((name, url))
         return asyncio.run(render_template("dir.html", items=items, url_path=url_path))

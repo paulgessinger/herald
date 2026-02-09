@@ -282,7 +282,7 @@ def create_app() -> Quart:
         #  abort(507)
         except KeyError:
             abort(404)
-        #  except fs.errors.ResourceNotFound:
+        #  except FileNotFoundError:
         #  abort(404)
 
     @app.route("/poll/<owner>/<repo>/<int:artifact_id>")

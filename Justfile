@@ -4,6 +4,12 @@ run:
 test:
     uv run pytest
 
+clean:
+    @rm -rf cache/files cache/*
+
+test-dl:
+    curl -sL http://127.0.0.1:5000/view/acts-project/acts/5075491485/index.html
+
 image_url := "ghcr.io/acts-project/ci-bridge"
 sha := "sha-" + `git rev-parse --short HEAD`
 image:
