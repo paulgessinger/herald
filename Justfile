@@ -10,7 +10,7 @@ clean:
 test-dl:
     curl -sL http://127.0.0.1:5000/view/acts-project/acts/5075491485/index.html
 
-image_url := "ghcr.io/acts-project/ci-bridge"
+image_url := "ghcr.io/paulgessinger/herald"
 sha := "sha-" + `git rev-parse --short HEAD`
 image:
     docker build --platform linux/amd64 -t {{image_url}}:{{sha}} .
