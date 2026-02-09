@@ -16,6 +16,7 @@ import requests
 import zstandard
 import pdf2image
 from fsspec.implementations.zip import ZipFileSystem
+import zipfile
 
 from . import config
 from .artifact_cache import ArtifactCache
@@ -238,7 +239,18 @@ class GitHub:
                 cache_misses.labels(type="file").inc()
 
             with self.get_artifact(token, repo, artifact_id) as fh:
-                zfs = ZipFileSystem(fo=fh)
+                try:
+                    zfs = ZipFileSystem(fo=fh)
+                except zipfile.BadZipFile:
+                    artifact_key = self._get_artifact_key(repo, artifact_id)
+                    logger.warning(
+                        "Cached artifact %d is not a valid zip file "
+                        "(possibly a legacy zstd tarball), invalidating cache",
+                        artifact_id,
+                    )
+                    self._artifact_cache.delete(artifact_key)
+                    raise
+
                 p = self._zip_path(path)
                 if path == "" or (zfs.exists(p) and zfs.isdir(p)):
                     content = self._generate_dir_listing(zfs, p, path).encode()

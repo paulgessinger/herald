@@ -9,8 +9,6 @@ ENV UV_PYTHON=python3.13 \
     UV_PROJECT_ENVIRONMENT=/app \
     UV_LINK_MODE=copy
 
-RUN apt-get update && apt-get install -y build-essential
-
 RUN --mount=type=cache,target=/root/.cache \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \

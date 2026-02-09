@@ -51,6 +51,13 @@ class ArtifactCache:
             with path.open(mode) as fh:
                 yield fh
 
+    def delete(self, key: str) -> None:
+        safe_key = self.safe_key(key)
+        path = self.path / safe_key
+        with self.key_lock(safe_key):
+            if path.exists():
+                path.unlink()
+
     def put(self, key: str, buf: IO[bytes]) -> None:
         safe_key = self.safe_key(key)
         path = self.path / safe_key

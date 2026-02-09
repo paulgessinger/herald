@@ -21,7 +21,7 @@ image:
 
 deploy: image
     sleep 1
-    oc import-image ci-bridge --all
+    oc import-image herald --all
 
 docker:
     docker run --rm -it -e HERALD_GH_PRIVATE_KEY=blub -e HERALD_GH_APP_ID=123 -e HERALD_METRICS_SECRET=123 -v$PWD/files:/app/cache/files -v$PWD/artifacts:/app/cache/artifacts test
