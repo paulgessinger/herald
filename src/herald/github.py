@@ -15,9 +15,7 @@ from quart import render_template
 import requests
 import zstandard
 import pdf2image
-from fsspec.implementations.tar import TarFileSystem
-import zipfile
-import tarfile
+from fsspec.implementations.zip import ZipFileSystem
 
 from . import config
 from .artifact_cache import ArtifactCache
@@ -173,33 +171,15 @@ class GitHub:
                     logger.info("Culling artifact cache")
                     self._artifact_cache.cull()
                     logger.info("Cull complete")
-                    # buffer is zip, let's make a tarball out of it
-                    with tempfile.NamedTemporaryFile("wb+") as tar_fh:
-                        with (
-                            tempfile.TemporaryFile("wb+") as zip_fh,
-                            tempfile.TemporaryDirectory() as tmpd,
-                        ):
-                            self._download_artifact(token, repo, artifact_id, zip_fh)
-                            zip_fh.seek(0)
-                            logger.info(
-                                "Download of artifact %d complete, writing to key %s",
-                                artifact_id,
-                                key,
-                            )
-
-                            z = zipfile.ZipFile(zip_fh)
-                            z.extractall(tmpd)
-
-                            t = tarfile.TarFile(fileobj=tar_fh, mode="w")
-                            t.add(tmpd, arcname=".", recursive=True)
-                            t.close()
-
-                            tar_fh.flush()
-                            tar_fh.seek(0)
-
-                        compressor = zstandard.ZstdCompressor()
-                        with self._artifact_cache.open(key, "wb") as fh:
-                            compressor.copy_stream(tar_fh, fh)
+                    with tempfile.TemporaryFile("wb+") as zip_fh:
+                        self._download_artifact(token, repo, artifact_id, zip_fh)
+                        zip_fh.seek(0)
+                        logger.info(
+                            "Download of artifact %d complete, writing to key %s",
+                            artifact_id,
+                            key,
+                        )
+                        self._artifact_cache.put(key, zip_fh)
 
                     logger.info(
                         "Cache reports key %s created for artifact %d",
@@ -257,29 +237,23 @@ class GitHub:
                 logger.info("Cache miss on key %s", key)
                 cache_misses.labels(type="file").inc()
 
-            with tempfile.NamedTemporaryFile("wb+") as tar_fh:
-                with self.get_artifact(token, repo, artifact_id) as fh:
-                    decompressor = zstandard.ZstdDecompressor()
-                    decompressor.copy_stream(fh, tar_fh)
-                tar_fh.flush()
-                tar_fh.seek(0)
-
-                tar = TarFileSystem(fo=tar_fh)
-                p = self._tar_path(path)
-                if path == "" or (tar.exists(p) and tar.isdir(p)):
-                    content = self._generate_dir_listing(tar, p, path).encode()
+            with self.get_artifact(token, repo, artifact_id) as fh:
+                zfs = ZipFileSystem(fo=fh)
+                p = self._zip_path(path)
+                if path == "" or (zfs.exists(p) and zfs.isdir(p)):
+                    content = self._generate_dir_listing(zfs, p, path).encode()
                     mime = "text/html"
                     self._cache.set(key, (compressor.compress(content), mime))
                     return io.BytesIO(content), mime
 
-                if not tar.exists(p):
+                if not zfs.exists(p):
                     raise ArtifactFileNotFound(
                         artifact_id,
                         file_name=path,
                         repo=repo,
                     )
 
-                with tar.open(p, "rb") as zfh:
+                with zfs.open(p, "rb") as zfh:
                     mime, _ = mimetypes.guess_type(path)
                     if to_png:
                         if mime != "application/pdf":
@@ -301,7 +275,6 @@ class GitHub:
                                 )
 
                             png_file = Path(tmpd) / "tmp.png"
-                            #  png_file = Path.cwd() / "tmp.png"
 
                             pdf2image.convert_from_path(
                                 tfh.name,
@@ -351,16 +324,15 @@ class GitHub:
                 raise e
 
     @staticmethod
-    def _tar_path(path: str) -> str:
-        """Convert a URL path to the corresponding tar member path."""
-        path = path.strip("/")
-        return f"./{path}" if path else "."
+    def _zip_path(path: str) -> str:
+        """Convert a URL path to the corresponding zip member path."""
+        return path.strip("/")
 
     def _generate_dir_listing(
-        self, tar: TarFileSystem, p: str, url_path: str
+        self, zfs: ZipFileSystem, p: str, url_path: str
     ) -> str:
         items = []
-        for entry in tar.ls(p, detail=True):
+        for entry in zfs.ls(p, detail=True):
             name = PurePath(entry["name"]).name
             url = name
             if entry["type"] == "directory" and not url.endswith("/"):
