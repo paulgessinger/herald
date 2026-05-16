@@ -58,36 +58,6 @@ class ArtifactNotFound(Exception):
     pass
 
 
-@alru_cache(maxsize=1024)
-async def find_artifact_id(
-    token: str, owner: str, repo: str, run_id: int, name: str
-) -> int | None:
-    logger.debug("Checking GH api for artifact named %s for run #%d", name, run_id)
-    async with aiohttp.ClientSession() as session:
-        gh = GitHubAPI(session, "herald", oauth_token=token)
-
-        url = f"/repos/{owner}/{repo}/actions/runs/{run_id}/artifacts"
-
-        github_api_call_count.labels("get_run_artifacts").inc()
-        async for a in gh.getiter(url, iterable_key="artifacts"):
-            if a["name"] == name:
-                return a["id"]
-
-        # Check if the run is still in progress
-        run = await gh.getitem(f"/repos/{owner}/{repo}/actions/runs/{run_id}")
-        if run["status"] != "completed":
-            logger.debug(
-                "Artifact named %s for run #%d not found, but is not complete yet",
-                name,
-                run_id,
-            )
-            # Raise exception to break caching in this case!
-            raise ArtifactNotFound()
-
-        # Not found and complete, we can safely cache the None result
-        return None
-
-
 def create_app() -> Quart:
     app = Quart("herald")
     RateLimiter(app)
@@ -134,6 +104,36 @@ def create_app() -> Quart:
         installation_tokens[repo] = response
         return response.token
 
+    @alru_cache(maxsize=1024)
+    async def find_artifact_id(
+        owner: str, repo: str, run_id: int, name: str
+    ) -> int | None:
+        logger.debug("Checking GH api for artifact named %s for run #%d", name, run_id)
+        token = await get_installation_access_token(f"{owner}/{repo}")
+        async with aiohttp.ClientSession() as session:
+            gh = GitHubAPI(session, "herald", oauth_token=token)
+
+            url = f"/repos/{owner}/{repo}/actions/runs/{run_id}/artifacts"
+
+            github_api_call_count.labels("get_run_artifacts").inc()
+            async for a in gh.getiter(url, iterable_key="artifacts"):
+                if a["name"] == name:
+                    return a["id"]
+
+            # Check if the run is still in progress
+            run = await gh.getitem(f"/repos/{owner}/{repo}/actions/runs/{run_id}")
+            if run["status"] != "completed":
+                logger.debug(
+                    "Artifact named %s for run #%d not found, but is not complete yet",
+                    name,
+                    run_id,
+                )
+                # Raise exception to break caching in this case!
+                raise ArtifactNotFound()
+
+            # Not found and complete, we can safely cache the None result
+            return None
+
     @app.errorhandler(github.ArtifactError)
     async def artifact_error_handler(e):
         is_htmx = "HX-Request" in request.headers
@@ -179,7 +179,8 @@ def create_app() -> Quart:
             repo,
         )
 
-        if artifact_id in artifact_expired:
+        expired_key = (owner, repo, artifact_id)
+        if expired_key in artifact_expired:
             logger.debug("Accessing artifact #%d that has expired", artifact_id)
             raise github.ArtifactExpired(
                 artifact_id=artifact_id, repo=f"{owner}/{repo}"
@@ -275,7 +276,7 @@ def create_app() -> Quart:
         #  abort(404)
         #  raise
         except github.ArtifactExpired:
-            artifact_expired[artifact_id] = True
+            artifact_expired[expired_key] = True
             raise
         #  abort(410)
         #  except github.ArtifactTooLarge:
@@ -365,15 +366,9 @@ def create_app() -> Quart:
 
         to_png = request.args.get("to_png", type=bool, default=False)
 
-        installation_access_token = await get_installation_access_token(
-            f"{owner}/{repo}"
-        )
-
         artifact_id = None
         try:
-            artifact_id = await find_artifact_id(
-                installation_access_token, owner, repo, run_id, name
-            )
+            artifact_id = await find_artifact_id(owner, repo, run_id, name)
         except ArtifactNotFound:
             # Not found and run not complete, so don't cache it
             pass
