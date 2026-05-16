@@ -22,7 +22,7 @@ cache_misses = Counter(
 )
 
 cache_read_errors = Counter(
-    "herald_cache_read_errors", "Total number of cache read errors", labelnames=["key"]
+    "herald_cache_read_errors", "Total number of cache read errors"
 )
 
 cache_etag_hits = Counter("herald_etag_hits", "Total number of etag hits")
