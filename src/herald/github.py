@@ -329,7 +329,7 @@ class GitHub:
 
         except Exception as e:
             if retry:
-                cache_read_errors.labels(key=key).inc()
+                cache_read_errors.inc()
                 logger.error(
                     "Error when unpacking cache item %s, retry once with deleted cache!",
                     key,

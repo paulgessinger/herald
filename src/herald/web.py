@@ -1,3 +1,6 @@
+import base64
+import binascii
+import hmac
 from datetime import timedelta, datetime, timezone
 import logging
 from typing import IO, Tuple
@@ -401,8 +404,7 @@ def create_app() -> Quart:
 
     @app.get("/metrics")
     async def metrics():
-        auth_header = request.headers.get("Authorization")
-        if auth_header is None:
+        def unauthorized() -> Response:
             response = Response()
             response.status_code = 401
             response.headers = {
@@ -410,11 +412,23 @@ def create_app() -> Quart:
             }
             return response
 
-        import base64
+        auth_header = request.headers.get("Authorization")
+        if auth_header is None:
+            return unauthorized()
 
-        user, pwd = base64.b64decode(auth_header.split(" ")[1]).decode().split(":", 1)
+        scheme, _, encoded = auth_header.partition(" ")
+        if scheme.lower() != "basic" or not encoded:
+            return unauthorized()
 
-        if user != "herald" or pwd != config.METRICS_SECRET:
+        try:
+            decoded = base64.b64decode(encoded, validate=True).decode("utf-8")
+            user, pwd = decoded.split(":", 1)
+        except (binascii.Error, UnicodeDecodeError, ValueError):
+            return unauthorized()
+
+        user_ok = hmac.compare_digest(user, "herald")
+        pwd_ok = hmac.compare_digest(pwd, config.METRICS_SECRET)
+        if not (user_ok and pwd_ok):
             return "", 403
 
         gh = github.GitHub()
