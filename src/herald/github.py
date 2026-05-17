@@ -336,7 +336,9 @@ class GitHub:
                     exc_info=True,
                 )
                 self._cache.delete(key)
-                return self.get_file(repo, artifact_id, path, to_png, retry=False)
+                return self.get_file(
+                    token, repo, artifact_id, path, to_png, retry=False
+                )
             else:
                 logger.error(
                     "Type error when unpacking cache for %s, no retry",

@@ -249,7 +249,6 @@ def create_app() -> Quart:
                 response.headers["Etag"] = exp_etag
 
                 response.headers["HX-Redirect"] = request.url
-                response.headers["HX-Redirect"] = request.url
 
             else:
                 logger.debug("File is not cached")
@@ -416,8 +415,6 @@ def create_app() -> Quart:
 
         if user != "herald" or pwd != config.METRICS_SECRET:
             return "", 403
-
-        gh = github.GitHub()
 
         cache_size_bytes.labels(type="file").set(gh._cache.volume())
         cache_size_bytes.labels(type="artifacts").set(gh._artifact_cache.total_size())

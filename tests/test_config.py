@@ -73,3 +73,21 @@ def test_metrics_secret_is_loaded():
     from herald import config
 
     assert config.METRICS_SECRET == os.environ["HERALD_METRICS_SECRET"]
+
+
+def test_redirect_rate_limit_reads_its_own_env_var(monkeypatch):
+    cfg = _reload_config(
+        monkeypatch,
+        HERALD_ARTIFACT_RATE_LIMIT_PER_MIN="50",
+        HERALD_REDIRECT_RATE_LIMIT_PER_MIN="99",
+    )
+    assert cfg.ARTIFACT_RATE_LIMIT_PER_MIN == 50
+    assert cfg.REDIRECT_RATE_LIMIT_PER_MIN == 99
+
+
+def test_redirect_rate_limit_defaults_independently(monkeypatch):
+    monkeypatch.delenv("HERALD_REDIRECT_RATE_LIMIT_PER_MIN", raising=False)
+    cfg = _reload_config(monkeypatch, HERALD_ARTIFACT_RATE_LIMIT_PER_MIN="7")
+    assert cfg.ARTIFACT_RATE_LIMIT_PER_MIN == 7
+    # The redirect default must NOT be pulled from ARTIFACT_RATE_LIMIT_PER_MIN.
+    assert cfg.REDIRECT_RATE_LIMIT_PER_MIN == 120
